@@ -37,7 +37,58 @@ pyMeasureMap
     Python implementation of the MeasureMap specification
 
 
-A longer description of your project goes here...
+Usage
+=====
+
+#. Clone the repository
+#. Install the package:
+
+   * If you only want to use the package, install it with pip::
+
+       pip install .
+
+     (where `.` stands for the directory with your local clone)
+
+   * If you want to run the tests::
+
+       pip install ".[testing]"
+
+   * If you want to contribute, make sure to include `-e` (for editable) and run::
+
+       pip install -e ".[dev]"
+
+Running all tests
+-----------------
+
+To run the tests you need a clone of the `aligned_bach_chorales`_ repository. By default, it will be cloned into your
+home directory under ``~/git``. To set it up yourself:
+
+   * Clone `aligned_bach_chorales`_ (submodules not required)
+   * Point pyMeasureMap's tests to the directory of the clone by setting the constant ``REPOSITORY_PATH`` to the
+     directory that includes the ``aligned_bach_chorales`` directory.
+
+To run the tests, head to your pyMeasureMaps clone and run ``tox``.
+
+.. _aligned_bach_chorales: https://github.com/measure-map/aligned_bach_chorales
+
+Loading and writing
+-------------------
+
+
+.. code-block:: python
+
+   mm = MeasureMap.from_json_file("path/to/file.mm.json")
+   mm.to_json_file("path/to/new_file.mm.json")
+
+Compress a MeasureMap object
+----------------------------
+
+.. code-block:: python
+
+   mm = MeasureMap.from_json_file("path/to/file.mm.json")
+   compressed = mm.compress()
+   compressed.to_json_file("path/to/compressed.mm.json")
+
 
 
 .. _pyscaffold-notes:

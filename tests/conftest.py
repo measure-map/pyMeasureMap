@@ -12,10 +12,11 @@ from pathlib import Path
 from typing import List
 
 import pytest
+from git import Repo
 
 from pymeasuremap.utils import collect_measure_maps
 
-REPOSITORY_PATH = "~/git"
+REPOSITORY_PATH = "~/"
 """Path where the clones of the following repositories are located:
 - https://github.com/measure-map/aligned_bach_chorales
 """
@@ -42,14 +43,18 @@ def mm_paths_dict() -> dict[str, Path]:
 @pytest.fixture(scope="session")
 def repository_path() -> Path:
     p = Path(REPOSITORY_PATH).expanduser()
-    assert p.is_dir(), f"Repository path {p} does not exist."
+    if not p.is_dir():
+        os.makedirs(p)
     return p
 
 
 @pytest.fixture(scope="session")
 def aligned_bach_chorales_path(repository_path) -> Path:
     p = repository_path / "aligned_bach_chorales"
-    assert p.is_dir(), f"Repository path {p} does not exist."
+    if not p.is_dir():
+        Repo.clone_from(
+            "https://github.com/measure-map/aligned_bach_chorales", p, depth=1
+        )
     return p
 
 
