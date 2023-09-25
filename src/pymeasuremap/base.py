@@ -244,5 +244,12 @@ class MeasureMap(PMeasureMap):
             mm_json = json.load(f)
         return cls.from_dicts(mm_json)
 
+    def to_dicts(self) -> List[dict]:
+        return [asdict(entry) for entry in self.entries]
+
+    def to_json_file(self, filepath: str):
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(self.to_dicts(), f, indent=2)
+
 
 # endregion MeasureMap
