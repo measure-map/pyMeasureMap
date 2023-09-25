@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import json
+import logging
 import warnings
 from dataclasses import asdict, dataclass
 from numbers import Number
+from pathlib import Path
 from typing import Iterator, List, Optional, Protocol, Sequence, runtime_checkable
 
 from pymeasuremap.utils import time_signature2nominal_length
+
+module_logger = logging.getLogger(__name__)
+
 
 # region Measure
 
@@ -246,17 +251,57 @@ class MeasureMap(PMeasureMap):
         return cls(entries)
 
     @classmethod
-    def from_json_file(cls, filepath: str):
+    def from_json_file(cls, filepath: Path | str):
         with open(filepath, "r", encoding="utf-8") as f:
             mm_json = json.load(f)
         return cls.from_dicts(mm_json)
 
+    def compress(self, ignore_ids: bool = False) -> MeasureMap:
+        """Returns a compressed version of the given measure map, where entries that can be restored from their
+        predecessors are omitted."""
+        return compress_measure_map(self, ignore_ids=ignore_ids)
+
     def to_dicts(self) -> List[dict]:
         return [asdict(entry) for entry in self.entries]
 
-    def to_json_file(self, filepath: str):
+    def to_json_file(self, filepath: Path | str):
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(self.to_dicts(), f, indent=2)
+
+
+def compress_measure_map(
+    measure_map: MeasureMap, ignore_ids: bool = False
+) -> MeasureMap:
+    """Returns a compressed version of the given measure map, where entries that can be restored from their
+    predecessors are omitted."""
+    if not isinstance(measure_map, MeasureMap):
+        raise TypeError(
+            f"measure_map must be a MeasureMap, got {type(measure_map)!r}: {measure_map!r}"
+        )
+    compressed_entries = []
+    previous_measure = None
+    for measure in measure_map:
+        if previous_measure is None:
+            previous_measure = measure
+            compressed_entries.append(measure)
+            module_logger.debug("First entry maintained by default.")
+            continue
+        default_successor = previous_measure.get_default_successor(
+            ignore_ids=ignore_ids
+        )
+        if measure == default_successor:
+            module_logger.debug(
+                f"MC {measure.count} can be re-generated from its predecessor."
+            )
+        else:
+            compressed_entries.append(measure)
+            module_logger.debug(
+                f"(2) MC {measure.count} differs from the (1) expected default successor:\n"
+                f"\t(1) {default_successor}\n"
+                f"\t(2) {measure}"
+            )
+        previous_measure = measure
+    return MeasureMap(compressed_entries)
 
 
 # endregion MeasureMap

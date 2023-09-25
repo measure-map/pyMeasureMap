@@ -3,27 +3,10 @@ from difflib import unified_diff
 from pymeasuremap.base import MeasureMap
 
 
-def test_compression(all_bach_mm_paths):
-    for mm_path in all_bach_mm_paths:
-        print("\n", mm_path)
-        MM = MeasureMap.from_json_file(mm_path)
-        # prototype of compression algorithm:
-        previous_measure = None
-        for measure in MM:
-            if previous_measure is None:
-                previous_measure = measure
-                continue
-            default_successor = previous_measure.get_default_successor()
-            if measure == default_successor:
-                print(f"MC {measure.count} can be re-generated from its predecessor.")
-            else:
-                print(
-                    f"MC {measure.count} cannot be re-generated from its predecessor.\n"
-                    f"Displaying (predecessor MC {previous_measure.count}, default successor, actual successor MC"
-                    f" {measure.count}):"
-                    f"\n\t{previous_measure}\n\t{default_successor}\n\t{measure}"
-                )
-            previous_measure = measure
+def test_compression(single_mm_path):
+    MM = MeasureMap.from_json_file(single_mm_path)
+    compressed = MM.compress()
+    assert len(compressed.entries) < len(MM.entries)
 
 
 def test_json_output(single_mm_path, tmp_path):
