@@ -45,6 +45,35 @@ class PMeasure(Protocol):
     next: Optional[list[int]]
     """A list of measure IDs that follow this measure."""
 
+    def get_actual_length(self) -> float:
+        """Returns the actual length of the measure in quarter notes, falling back to .get_nominal_length() if the
+        actual_length is not specified.
+
+        Raises:
+            ValueError:
+                If neither the actual_length nor the nominal_length is specified.
+
+        """
+        ...
+
+    def get_default_successor(self, ignore_ids: bool = False) -> Measure:
+        """Generates the successor in the MeasureMap based on default values. This method is at the heart of the
+        compressed measure map: An entry that is identical to <predecessor>.get_default_successor() can be omitted
+        because it can be perfectly restored."""
+        ...
+
+    def get_nominal_length(self) -> float:
+        """Returns the nominal length of the measure in quarter notes, falling back to the length implied by the time
+        signature if the nominal_length is not specified.
+
+        Raises:
+            ValueError:
+                If neither the nominal_length nor the time_signature is specified or if the time_signature string
+                does not correspond to a fraction.
+
+        """
+        ...
+
 
 @dataclass(kw_only=True)
 class Measure(PMeasure):
@@ -230,6 +259,25 @@ class PMeasureMap(Protocol):
     entries: Sequence[PMeasure]
 
     def __iter__(self) -> Iterator[PMeasure]:
+        ...
+
+    @classmethod
+    def from_dicts(cls, sequence_of_dicts: dict) -> PMeasureMap:
+        ...
+
+    @classmethod
+    def from_json_file(cls, filepath: Path | str) -> PMeasureMap:
+        ...
+
+    def compress(self, ignore_ids: bool = False) -> MeasureMap:
+        """Returns a compressed version of the given measure map, where entries that can be restored from their
+        predecessors are omitted."""
+        ...
+
+    def to_dicts(self) -> List[dict]:
+        ...
+
+    def to_json_file(self, filepath: Path | str):
         ...
 
 
