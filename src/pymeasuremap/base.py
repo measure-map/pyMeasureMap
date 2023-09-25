@@ -159,12 +159,19 @@ def make_default_successor(measure: Measure, ignore_ids: bool = False) -> Measur
         successor_values["qstamp"] += actual_length
     if successor_values["actual_length"] is not None:
         successor_values["actual_length"] = measure.get_nominal_length()
-    if ignore_ids:
-        successor_values["ID"] = None
     count_field_is_present = successor_values["count"] is not None
     number_field_is_present = successor_values["number"] is not None
     if count_field_is_present:
         successor_values["count"] += 1
+    if ignore_ids:
+        successor_values["ID"] = None
+    elif successor_values["ID"] is not None:
+        if not count_field_is_present:
+            raise ValueError(
+                "Cannot compute default ID because 'count' is not specified. Consider setting "
+                "ignore_ids=True."
+            )
+        successor_values["ID"] = str(successor_values["count"])
     if number_field_is_present:
         successor_values["number"] += 1
     if successor_values["name"] is not None:
