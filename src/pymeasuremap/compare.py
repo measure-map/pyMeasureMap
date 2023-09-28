@@ -1,18 +1,35 @@
 """Comparing MeasureMaps pertaining two the same music."""
 import json
+import logging
 from pathlib import Path
+
+from pymeasuremap.base import MeasureMap
+
+module_logger = logging.getLogger(__name__)
+
+
+def resolve_measure_map_argument(mm: MeasureMap | Path | str | dict) -> MeasureMap:
+    if isinstance(mm, MeasureMap):
+        return mm
+    if isinstance(mm, (Path, str)):
+        return MeasureMap.from_json_file(mm)
+    if isinstance(mm, dict):
+        return MeasureMap.from_dicts(mm)
+    raise TypeError(
+        f"Expected a MeasureMap, a path to a JSON file, or a dict, got: {mm!r}"
+    )
 
 
 class Compare:
     def __init__(
         self,
-        preferred: list[dict],
-        other: list[dict],
+        preferred: MeasureMap | Path | str | dict,
+        other: MeasureMap | Path | str | dict,
         attempt_fix: bool = False,
         write_modifications: bool = False,
     ):
-        self.preferred_mm = preferred
-        self.other_mm = other
+        self.preferred_mm = resolve_measure_map_argument(preferred)
+        self.other_mm = resolve_measure_map_argument(other)
         self.expanded_flag = False
         self.renumbered_flag = False
         self.attempt_fix = attempt_fix
