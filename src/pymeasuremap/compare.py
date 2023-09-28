@@ -43,7 +43,48 @@ class Compare:
 
         self.diagnosis = []
         self.attempted_changes = []
-        self.diagnose()
+
+    def all_identical(
+        self,
+        ID: bool = False,
+        count: bool = True,
+        qstamp: bool = True,
+        number: bool = True,
+        name: bool = False,
+        time_signature: bool = True,
+        nominal_length: bool = True,
+        actual_length: bool = True,
+        start_repeat: bool = True,
+        end_repeat: bool = True,
+        next: bool = True,
+    ) -> bool:
+        """Compare two measure maps and return True if the activated fields are identical, False otherwise."""
+        if len(self.preferred_mm) != len(self.other_mm):
+            return False
+        mask = (
+            ID,
+            count,
+            qstamp,
+            number,
+            name,
+            time_signature,
+            nominal_length,
+            actual_length,
+            start_repeat,
+            end_repeat,
+            next,
+        )
+        for preferred_tup, other_tup in zip(
+            self.preferred_mm.iter_tuples(*mask), self.other_mm.iter_tuples(*mask)
+        ):
+            if preferred_tup != other_tup:
+                module_logger.warning(
+                    f"Encountered mismatch when comparing the following entries:\n"
+                    f"{preferred_tup}\n"
+                    f"{other_tup}"
+                )
+                return False
+        return True
 
     def diagnose(self):
         """
