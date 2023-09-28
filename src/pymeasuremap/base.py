@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import warnings
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, astuple, dataclass
 from numbers import Number
 from pathlib import Path
 from typing import Iterator, List, Optional, Protocol, Sequence, runtime_checkable
@@ -293,6 +293,20 @@ class MeasureMap(PMeasureMap):
     def __iter__(self) -> Iterator[Measure]:
         yield from self.entries
 
+    def __len__(self) -> int:
+        return max(entry.count for entry in self.entries if entry.count is not None)
+
+    def __getitem__(self, item: int):
+        if item < 1:
+            raise ValueError(
+                f"Subscript the MeasureMap with a valid count value (got {item!r}). To access the list "
+                f"of Measures, use the .entries property."
+            )
+        try:
+            return next(entry for entry in self.entries if entry.count == item)
+        except StopIteration:
+            raise IndexError(f"MeasureMap has no entry with count {item!r}")
+
     @classmethod
     def from_dicts(cls, sequence_of_dicts: Sequence[dict]) -> MeasureMap:
         entries = [Measure(**d) for d in sequence_of_dicts]
@@ -308,6 +322,43 @@ class MeasureMap(PMeasureMap):
         """Returns a compressed version of the given measure map, where entries that can be restored from their
         predecessors are omitted."""
         return compress_measure_map(self, ignore_ids=ignore_ids)
+
+    def iter_tuples(
+        self,
+        ID: bool = True,
+        count: bool = True,
+        qstamp: bool = True,
+        number: bool = True,
+        name: bool = True,
+        time_signature: bool = True,
+        nominal_length: bool = True,
+        actual_length: bool = True,
+        start_repeat: bool = True,
+        end_repeat: bool = True,
+        next: bool = True,
+    ) -> Iterator[tuple]:
+        mask = (
+            ID,
+            count,
+            qstamp,
+            number,
+            name,
+            time_signature,
+            nominal_length,
+            actual_length,
+            start_repeat,
+            end_repeat,
+            next,
+        )
+        if not any(mask):
+            raise ValueError("At least one field must be included.")
+        make_subset = not all(mask)
+        for entry in self:
+            entry_tup = astuple(entry)
+            if make_subset:
+                yield tuple(value for value, include in zip(entry_tup, mask) if include)
+            else:
+                yield entry_tup
 
     def to_dicts(self) -> List[dict]:
         return [asdict(entry) for entry in self.entries]
