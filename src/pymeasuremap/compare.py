@@ -53,6 +53,7 @@ class Compare:
 
         self.preferred_length = len(self.preferred_mm)
         self.other_length = len(self.other_mm)
+        mismatch_counts = self.preferred_length != self.other_length
 
         mismatch_qstamps = False
         mismatch_number = False
@@ -62,50 +63,31 @@ class Compare:
         mismatch_nominal_lengths = False
         repeats = False
 
-        for i in range(min(self.preferred_length, self.other_length)):
-            if self.preferred_mm[i]["qstamp"] != self.other_mm[i].get("qstamp"):
-                mismatch_qstamps = True
-            if self.preferred_mm[i]["number"] != self.other_mm[i].get("number"):
-                mismatch_number = True
-            if self.preferred_mm[i]["time_signature"] != self.other_mm[i].get(
-                "time_signature"
-            ):
-                mismatch_time_signature = True
-            if self.preferred_mm[i]["start_repeat"] != self.other_mm[i].get(
-                "start_repeat"
-            ) or self.preferred_mm[i]["end_repeat"] != self.other_mm[i].get(
-                "end_repeat"
-            ):
-                mismatch_repeats = True
-            if (
-                self.preferred_mm[i]["actual_length"]
-                != self.other_mm[i]["actual_length"]
-            ):
-                mismatch_actual_lengths = True
-            if (
-                self.preferred_mm[i]["nominal_length"]
-                != self.other_mm[i]["nominal_length"]
-            ):
-                mismatch_nominal_lengths = True
-
-            if self.other_mm[i].get("end_repeat") is True:
-                repeats = True
+        for preferred, other in zip(self.preferred_mm, self.other_mm):
+            mismatch_qstamps = preferred.qstamp != other.qstamp
+            mismatch_number = preferred.number != other.number
+            if mismatch_number:
+                print(preferred.number, other.number)
+            mismatch_time_signature = preferred.time_signature != other.time_signature
+            mismatch_repeats = (
+                preferred.start_repeat != other.start_repeat
+                or preferred.end_repeat != other.end_repeat
+            )
+            mismatch_actual_lengths = preferred.actual_length != other.actual_length
+            mismatch_nominal_lengths = preferred.nominal_length != other.nominal_length
 
         # print(self.other_mm)
 
-        if (
-            all(
-                not x
-                for x in [
-                    mismatch_qstamps,
-                    mismatch_number,
-                    mismatch_time_signature,
-                    mismatch_repeats,
-                    mismatch_actual_lengths,
-                    mismatch_nominal_lengths,
-                ]
-            )
-            and not self.preferred_length == self.other_length
+        if not any(
+            [
+                mismatch_qstamps,
+                mismatch_number,
+                mismatch_time_signature,
+                mismatch_repeats,
+                mismatch_actual_lengths,
+                mismatch_nominal_lengths,
+                mismatch_counts,
+            ]
         ):
             if (
                 self.attempt_fix or self.write_modifications
@@ -411,7 +393,7 @@ def recompute_numbers(preferred, other):
     """
 
     for measure in preferred:
-        other[measure["count"] - 1]["number"] = measure["number"]
+        other[measure.count].number = measure.number
     return other
 
 
