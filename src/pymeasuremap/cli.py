@@ -48,6 +48,20 @@ def extract_cmd(args):
     )
 
 
+def check_and_create(d) -> Path:
+    """Turn input into an existing path, asking the user if they want to create it if it doesn't exist."""
+    if not os.path.isdir(d):
+        d = resolve_dir(os.path.join(os.getcwd(), d))
+        if not d.is_dir():
+            if input(f"{d} does not exist. Create? (y|n)") == "y":
+                d.mkdir(parents=True, exist_ok=True)
+            else:
+                raise argparse.ArgumentTypeError(
+                    f"{d} needs to be an existing directory."
+                )
+    return resolve_dir(d)
+
+
 def check_dir(d):
     if not os.path.isdir(d):
         d = resolve_dir(os.path.join(os.getcwd(), d))
@@ -72,7 +86,7 @@ def get_arg_parser():
         "-o",
         "--out",
         metavar="OUT_DIR",
-        type=check_dir,
+        type=check_and_create,
         help="Output directory.",
     )
     default_args.add_argument(
@@ -191,10 +205,10 @@ def run():
     """Parse arguments and pass them to the function corresponding to the respective MM command."""
     parser = get_arg_parser()
     args = parser.parse_args()
-    setup_logging(args.level)
     if "func" not in args:
         parser.print_help()
         return
+    setup_logging(args.level)
     if args.files is not None:
         args.files = resolve_files_argument(args.files, args.dir)
     args.dir = resolve_dir(args.dir)
