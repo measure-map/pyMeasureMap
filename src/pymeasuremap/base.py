@@ -8,7 +8,7 @@ from numbers import Number
 from pathlib import Path
 from typing import Iterator, List, Optional, Protocol, Sequence, runtime_checkable
 
-from pymeasuremap.utils import time_signature2nominal_length
+from pymeasuremap.utils import store_json, time_signature2nominal_length
 
 module_logger = logging.getLogger(__name__)
 
@@ -294,12 +294,12 @@ class MeasureMap(PMeasureMap):
         yield from self.entries
 
     @classmethod
-    def from_dicts(cls, sequence_of_dicts: dict):
+    def from_dicts(cls, sequence_of_dicts: Sequence[dict]) -> MeasureMap:
         entries = [Measure(**d) for d in sequence_of_dicts]
         return cls(entries)
 
     @classmethod
-    def from_json_file(cls, filepath: Path | str):
+    def from_json_file(cls, filepath: Path | str) -> MeasureMap:
         with open(filepath, "r", encoding="utf-8") as f:
             mm_json = json.load(f)
         return cls.from_dicts(mm_json)
@@ -313,8 +313,7 @@ class MeasureMap(PMeasureMap):
         return [asdict(entry) for entry in self.entries]
 
     def to_json_file(self, filepath: Path | str):
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(self.to_dicts(), f, indent=2)
+        store_json(self.to_dicts(), filepath)
 
 
 def compress_measure_map(

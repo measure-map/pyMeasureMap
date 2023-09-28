@@ -6,12 +6,13 @@ from typing import Iterable, Optional
 
 from music21 import bar, converter, stream
 
-from pymeasuremap.utils import get_m21_input_extensions, resolve_dir, store_json
+from pymeasuremap.base import MeasureMap
+from pymeasuremap.utils import get_m21_input_extensions, resolve_dir
 
 module_logger = logging.getLogger(__name__)
 
 
-def m21_part_to_measure_map(this_part: stream.Part) -> list:
+def m21_part_to_measure_map(this_part: stream.Part) -> MeasureMap:
     """
     Mapping from a music21.stream.part
     to a "measure map": currently a list of dicts with the following keys:
@@ -82,12 +83,12 @@ def m21_part_to_measure_map(this_part: stream.Part) -> list:
         sheet_measure_map.append(measure_dict)
         count += 1
 
-    return sheet_measure_map
+    return MeasureMap.from_dicts(sheet_measure_map)
 
 
 def m21_stream_to_measure_map(
     this_stream: stream.Stream, check_parts_match: bool = True
-) -> list:
+) -> MeasureMap:
     """
     Maps from a music21 stream
     to a possible version of the "measure map".
@@ -177,7 +178,7 @@ def extract_directory(
         output_filepath = make_measure_map_filepath(
             filepath, measure_map_extension, output_folder
         )
-        store_json(mm, output_filepath)
+        mm.to_json_file(output_filepath)
         module_logger.info(f"Extracted MeasureMap {output_filepath} from {filepath}.")
 
 
