@@ -60,6 +60,9 @@ class Compare:
     ) -> bool:
         """Compare two measure maps and return True if the activated fields are identical, False otherwise."""
         if len(self.preferred_mm) != len(self.other_mm):
+            module_logger.warning(
+                f"Lengths differ: {len(self.preferred_mm)} != {len(self.other_mm)}"
+            )
             return False
         mask = (
             ID,
@@ -78,13 +81,95 @@ class Compare:
             self.preferred_mm.iter_tuples(*mask), self.other_mm.iter_tuples(*mask)
         ):
             if preferred_tup != other_tup:
+                verbal_mask = ", ".join(
+                    field
+                    for field, include in zip(
+                        (
+                            "ID",
+                            "count",
+                            "qstamp",
+                            "number",
+                            "name",
+                            "time_signature",
+                            "nominal_length",
+                            "actual_length",
+                            "start_repeat",
+                            "end_repeat",
+                            "next",
+                        ),
+                        mask,
+                    )
+                    if include
+                )
                 module_logger.warning(
                     f"Encountered mismatch when comparing the following entries:\n"
+                    f"{verbal_mask}\n"
                     f"{preferred_tup}\n"
                     f"{other_tup}"
                 )
                 return False
         return True
+
+    def quick_diagnosis(
+        self,
+        ID: bool = False,
+        count: bool = True,
+        qstamp: bool = True,
+        number: bool = True,
+        name: bool = False,
+        time_signature: bool = True,
+        nominal_length: bool = True,
+        actual_length: bool = True,
+        start_repeat: bool = True,
+        end_repeat: bool = True,
+        next: bool = True,
+    ) -> str:
+        """Compare two measure maps and return a quick analysis. 'OK' = perfect match."""
+        if len(self.preferred_mm) != len(self.other_mm):
+            return "entries"
+        mask = (
+            ID,
+            count,
+            qstamp,
+            number,
+            name,
+            time_signature,
+            nominal_length,
+            actual_length,
+            start_repeat,
+            end_repeat,
+            next,
+        )
+        for preferred_tup, other_tup in zip(
+            self.preferred_mm.iter_tuples(*mask), self.other_mm.iter_tuples(*mask)
+        ):
+            if preferred_tup != other_tup:
+                verbal_mask = (
+                    field
+                    for field, include in zip(
+                        (
+                            "ID",
+                            "count",
+                            "qstamp",
+                            "number",
+                            "name",
+                            "time_signature",
+                            "nominal_length",
+                            "actual_length",
+                            "start_repeat",
+                            "end_repeat",
+                            "next",
+                        ),
+                        mask,
+                    )
+                    if include
+                )
+                for field, preferred_value, other_value in zip(
+                    verbal_mask, preferred_tup, other_tup
+                ):
+                    if preferred_value != other_value:
+                        return field
+        return "OK"
 
     def diagnose(self):
         """
