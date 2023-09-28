@@ -1,4 +1,6 @@
 """Comparing MeasureMaps pertaining two the same music."""
+import json
+from pathlib import Path
 
 
 class Compare:
@@ -435,3 +437,67 @@ def split(other, change):
 
 
 # endregion helpers
+# region operations
+
+
+def write_diagnosis(
+    diagnosis: list[list], out_path: Path, out_name: str = "other_modifications.txt"
+) -> None:
+    """Write the diagnosis (suggested modifications to the `other` source) in a text file"""
+    with open(out_path / out_name, "w") as file:
+        if not diagnosis:
+            file.write("No changes required to align these two sources.")
+            return
+
+        file.write("Changes to be made to secondary measure map:\n")
+        for change in diagnosis:
+            if change[0] == "Join":
+                file.write(f" - Join measures {change[1]} and {change[1] + 1}.\n")
+            elif change[0] == "Split":
+                file.write(f" - Split measure {change[1]} at offset {change[2]}.\n")
+            elif change[0] == "Expand_Repeats":
+                file.write(" - Expand the repeats.\n")
+            elif change[0] == "Renumber":
+                file.write(" - Renumber the measures.\n")
+            elif change[0] == "Repeat_Marks":
+                file.write(f" - Add {change[2]} repeat marks to measure {change[1]}.\n")
+            elif change[0] == "Measure_Length":
+                file.write(
+                    f" - Change measure {change[1]} actual length to {change[2]}.\n"
+                )
+            elif change[0] == "Time_Signature":
+                file.write(
+                    f" - Change measure {change[1]} time signature to {change[2]}.\n"
+                )
+
+
+def one_comparison(preferred_path: Path, other_path: Path, write: bool = True) -> list:
+    with open(preferred_path, "r") as file:
+        preferred = json.load(file)
+    with open(other_path, "r") as file:
+        other = json.load(file)
+    diagnosis = Compare(preferred, other).diagnosis
+
+    if write:
+        write_diagnosis(diagnosis, preferred_path.parent, "other_modifications.txt")
+
+    return diagnosis
+
+
+def run_corpus(
+    base_path: Path,  # "When-in-Rome" / "Corpus" / "Chorale-Corpus",
+    preferred_name: str = "preferred_measure_map.json",
+    other_name: str = "other_measure_map.json",
+) -> None:
+    """
+    Run comparisons on a corpus of pre-extracted measure maps.
+    Set up with defaults for a local copy of `When in Rome` where the directory structure has
+    pairs of corresponding `preferred` and `other`
+    sources in the same folder.
+    """
+    for pref_path in base_path.rglob(preferred_name):
+        other_path = pref_path.parent / other_name
+        one_comparison(pref_path, other_path)
+
+
+# endregion operations
