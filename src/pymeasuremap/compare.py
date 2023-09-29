@@ -2,6 +2,7 @@
 import json
 import logging
 from pathlib import Path
+from typing import Optional
 
 from pymeasuremap.base import MeasureMap
 
@@ -123,10 +124,17 @@ class Compare:
         start_repeat: bool = True,
         end_repeat: bool = True,
         next: bool = True,
+        entries_threshold: Optional[int] = None,
     ) -> str:
         """Compare two measure maps and return a quick analysis. 'OK' = perfect match."""
         if len(self.preferred_mm) != len(self.other_mm):
-            return "entries"
+            if entries_threshold is None:
+                return "entries"
+            n_diff = abs(len(self.preferred_mm) - len(self.other_mm))
+            if n_diff > entries_threshold:
+                return f">{entries_threshold}_entries"
+            else:
+                return f"≤{entries_threshold}_entries"
         mask = (
             ID,
             count,
