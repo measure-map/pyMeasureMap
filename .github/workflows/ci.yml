@@ -60,7 +60,7 @@ jobs:
     strategy:
       matrix:
         python:
-        - "3.8"  # oldest Python supporting Protocols
+        - "3.10"  # oldest Python supporting @dataclass(kw_only)
         - "3.11"  # newest Python that is stable
         platform:
         - ubuntu-latest

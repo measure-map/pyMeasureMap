@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 import logging
 import warnings
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, astuple, dataclass
 from numbers import Number
 from pathlib import Path
 from typing import Iterator, List, Optional, Protocol, Sequence, runtime_checkable
 
-from pymeasuremap.utils import time_signature2nominal_length
+from pymeasuremap.utils import store_json, time_signature2nominal_length
 
 module_logger = logging.getLogger(__name__)
 
@@ -130,6 +130,15 @@ class Measure(PMeasure):
             self.end_repeat = bool(self.end_repeat)
         if self.next is not None:
             self.next = list(self.next)
+
+    def as_dict(
+        self,
+        verbose: bool = False,
+    ):
+        """Converts Measure to a dictionary, omitting fields that are not specified unless verbose=True."""
+        if verbose:
+            return asdict(self)
+        return {key: value for key, value in asdict(self).items() if value is not None}
 
     def get_actual_length(self) -> float:
         """Returns the actual length of the measure in quarter notes, falling back to .get_nominal_length() if the
@@ -274,10 +283,10 @@ class PMeasureMap(Protocol):
         predecessors are omitted."""
         ...
 
-    def to_dicts(self) -> List[dict]:
+    def to_dicts(self, verbose: bool) -> List[dict]:
         ...
 
-    def to_json_file(self, filepath: Path | str):
+    def to_json_file(self, filepath: Path | str, verbose: bool):
         ...
 
 
@@ -293,13 +302,27 @@ class MeasureMap(PMeasureMap):
     def __iter__(self) -> Iterator[Measure]:
         yield from self.entries
 
+    def __len__(self) -> int:
+        return max(entry.count for entry in self.entries if entry.count is not None)
+
+    def __getitem__(self, item: int):
+        if item < 1:
+            raise ValueError(
+                f"Subscript the MeasureMap with a valid count value (got {item!r}). To access the list "
+                f"of Measures, use the .entries property."
+            )
+        try:
+            return next(entry for entry in self.entries if entry.count == item)
+        except StopIteration:
+            raise IndexError(f"MeasureMap has no entry with count {item!r}")
+
     @classmethod
-    def from_dicts(cls, sequence_of_dicts: dict):
+    def from_dicts(cls, sequence_of_dicts: Sequence[dict]) -> MeasureMap:
         entries = [Measure(**d) for d in sequence_of_dicts]
         return cls(entries)
 
     @classmethod
-    def from_json_file(cls, filepath: Path | str):
+    def from_json_file(cls, filepath: Path | str) -> MeasureMap:
         with open(filepath, "r", encoding="utf-8") as f:
             mm_json = json.load(f)
         return cls.from_dicts(mm_json)
@@ -309,12 +332,53 @@ class MeasureMap(PMeasureMap):
         predecessors are omitted."""
         return compress_measure_map(self, ignore_ids=ignore_ids)
 
-    def to_dicts(self) -> List[dict]:
-        return [asdict(entry) for entry in self.entries]
+    def iter_tuples(
+        self,
+        ID: bool = True,
+        count: bool = True,
+        qstamp: bool = True,
+        number: bool = True,
+        name: bool = True,
+        time_signature: bool = True,
+        nominal_length: bool = True,
+        actual_length: bool = True,
+        start_repeat: bool = True,
+        end_repeat: bool = True,
+        next: bool = True,
+    ) -> Iterator[tuple]:
+        mask = (
+            ID,
+            count,
+            qstamp,
+            number,
+            name,
+            time_signature,
+            nominal_length,
+            actual_length,
+            start_repeat,
+            end_repeat,
+            next,
+        )
+        if not any(mask):
+            raise ValueError("At least one field must be included.")
+        make_subset = not all(mask)
+        for entry in self:
+            entry_tup = astuple(entry)
+            if make_subset:
+                yield tuple(value for value, include in zip(entry_tup, mask) if include)
+            else:
+                yield entry_tup
 
-    def to_json_file(self, filepath: Path | str):
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(self.to_dicts(), f, indent=2)
+    def to_dicts(
+        self,
+        verbose=False,
+    ) -> List[dict]:
+        """Converts MeasureMap to a list of dictionaries, omitting fields that are not specified unless verbose=True."""
+        return [entry.as_dict(verbose=verbose) for entry in self.entries]
+
+    def to_json_file(self, filepath: Path | str, verbose: bool = False):
+        """Serializes the MeasureMap to a JSON file, omitting fields that are not specified unless verbose=True."""
+        store_json(self.to_dicts(verbose=verbose), filepath)
 
 
 def compress_measure_map(

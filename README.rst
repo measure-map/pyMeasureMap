@@ -71,6 +71,24 @@ To run the tests, head to your pyMeasureMaps clone and run ``tox``.
 
 .. _aligned_bach_chorales: https://github.com/measure-map/aligned_bach_chorales
 
+Command line interface
+----------------------
+
+Once the package is installed, the ``MM`` will be available in your commandline. Typing it will print the available
+sub-commands.
+
+Extracting measure maps
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Type ``MM extract -h`` to print the help with all arguments.
+
+Parsing all files in ``path/to/chorales`` that music21 can parse::
+
+    MM extract -d path/to/corpus                    # creates measure maps next to the parsed files
+    MM extract -d path/to/corpus -o path/to/output  # creates measure maps in the specified directory
+    MM extract -d path/to/corpus -r "^bwv"          # only parses files that match the regex (i.e., start with "bwv")
+    MM extract -d path/to/corpus -x .mxl .xml       # only parses files with the specified extensions
+
 Loading and writing
 -------------------
 
