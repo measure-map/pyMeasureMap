@@ -16,7 +16,7 @@ from git import Repo
 
 from pymeasuremap.utils import collect_measure_maps
 
-REPOSITORY_PATH = "~/git"
+REPOSITORY_PATH = "~"
 """Path where the clones of the following repositories are located:
 - https://github.com/measure-map/aligned_bach_chorales
 """
@@ -50,16 +50,12 @@ def get_aligned_bach_chorales_path() -> Path:
 
 def get_mm_paths_params():
     """Used to parametrize tests."""
-    params = list(get_mm_path_dict().values())
-    print(f"len(params): {len(params)}")
-    return params
+    return list(get_mm_path_dict().values())
 
 
 def get_mm_paths_ids():
     """Used to parametrize tests."""
-    ids = list(get_mm_path_dict().keys())
-    print(f"len(ids): {len(ids)}")
-    return ids
+    return list(get_mm_path_dict().keys())
 
 
 @pytest.fixture(scope="session", params=get_mm_paths_params(), ids=get_mm_paths_ids())

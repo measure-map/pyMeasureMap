@@ -283,10 +283,10 @@ class PMeasureMap(Protocol):
         predecessors are omitted."""
         ...
 
-    def to_dicts(self) -> List[dict]:
+    def to_dicts(self, verbose: bool) -> List[dict]:
         ...
 
-    def to_json_file(self, filepath: Path | str):
+    def to_json_file(self, filepath: Path | str, verbose: bool):
         ...
 
 
@@ -376,8 +376,9 @@ class MeasureMap(PMeasureMap):
         """Converts MeasureMap to a list of dictionaries, omitting fields that are not specified unless verbose=True."""
         return [entry.as_dict(verbose=verbose) for entry in self.entries]
 
-    def to_json_file(self, filepath: Path | str):
-        store_json(self.to_dicts(), filepath)
+    def to_json_file(self, filepath: Path | str, verbose: bool = False):
+        """Serializes the MeasureMap to a JSON file, omitting fields that are not specified unless verbose=True."""
+        store_json(self.to_dicts(verbose=verbose), filepath)
 
 
 def compress_measure_map(

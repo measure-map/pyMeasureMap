@@ -16,7 +16,7 @@ def test_json_output(single_mm_path, tmp_path):
     with open(single_mm_path, "r") as f1, open(tmp_filepath, "r") as f2:
         text1_lines, text2_lines = f1.readlines(), f2.readlines()
         diff = unified_diff(text1_lines, text2_lines, lineterm="")
-        diff_str = "\n".join(diff)
+        diff_str = "".join(diff)
         print(
             f"Comparing original {single_mm_path} with {tmp_filepath}:\n\n{diff_str}..."
         )

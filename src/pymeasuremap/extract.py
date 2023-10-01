@@ -68,13 +68,14 @@ def m21_part_to_measure_map(this_part: stream.Part) -> MeasureMap:
             next.append(count + 1)
 
         measure_dict = {
+            # ID
             "count": count,
             "qstamp": measure.offset,
             "number": measure.measureNumber,
-            # "suffix": measure.suffix,
+            # "name"
+            "time_signature": time_sig,
             "nominal_length": measure.barDuration.quarterLength,
             "actual_length": measure.duration.quarterLength,
-            "time_signature": time_sig,
             "start_repeat": start_repeat,
             "end_repeat": end_repeat,
             "next": next,
