@@ -12,7 +12,7 @@ from typing import List
 
 from pymeasuremap import __version__
 
-__license__ = "CC0-1.0"
+__license__ = "CC BY-SA 4.0"
 
 from pymeasuremap.compare import one_comparison, run_corpus
 from pymeasuremap.extract import extract_directory

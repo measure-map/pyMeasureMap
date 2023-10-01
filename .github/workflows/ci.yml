@@ -60,7 +60,7 @@ jobs:
     strategy:
       matrix:
         python:
-        - "3.9"  # oldest Python supporting functools.cache()
+        - "3.10"  # oldest Python supporting @dataclass(kw_only)
         - "3.11"  # newest Python that is stable
         platform:
         - ubuntu-latest
