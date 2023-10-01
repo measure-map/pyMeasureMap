@@ -131,6 +131,15 @@ class Measure(PMeasure):
         if self.next is not None:
             self.next = list(self.next)
 
+    def as_dict(
+        self,
+        verbose: bool = False,
+    ):
+        """Converts Measure to a dictionary, omitting fields that are not specified unless verbose=True."""
+        if verbose:
+            return asdict(self)
+        return {key: value for key, value in asdict(self).items() if value is not None}
+
     def get_actual_length(self) -> float:
         """Returns the actual length of the measure in quarter notes, falling back to .get_nominal_length() if the
         actual_length is not specified.
@@ -360,8 +369,12 @@ class MeasureMap(PMeasureMap):
             else:
                 yield entry_tup
 
-    def to_dicts(self) -> List[dict]:
-        return [asdict(entry) for entry in self.entries]
+    def to_dicts(
+        self,
+        verbose=False,
+    ) -> List[dict]:
+        """Converts MeasureMap to a list of dictionaries, omitting fields that are not specified unless verbose=True."""
+        return [entry.as_dict(verbose=verbose) for entry in self.entries]
 
     def to_json_file(self, filepath: Path | str):
         store_json(self.to_dicts(), filepath)
