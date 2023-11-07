@@ -2,11 +2,61 @@ from __future__ import annotations
 
 import json
 import os
+import warnings
 from fractions import Fraction
 from pathlib import Path
-from typing import List, Tuple
+from typing import Callable, Iterable, List, Optional, Tuple
 
 from music21 import converter
+
+from pymeasuremap.base import MeasureMap
+from pymeasuremap.extract import module_logger
+
+
+def apply_function_to_directory(
+    func: Callable[[Path | str], MeasureMap],
+    directory: Path | str,
+    output_directory: Optional[Path | str] = None,
+    file_regex: str = "*",
+    extensions: Optional[str | Iterable[str]] = None,
+    measure_map_extension: str = ".mm.json",
+):
+    directory = resolve_dir(directory)
+    if output_directory is not None:
+        output_directory = resolve_dir(output_directory)
+    if extensions is None:
+        extensions = get_m21_input_extensions()
+    elif isinstance(extensions, str):
+        extensions = [extensions]
+    paths = directory.rglob(file_regex)
+    module_logger.info(
+        f"Iterating through paths within {directory} that match the regex {file_regex!r} and have one "
+        f"of these extensions: {extensions!r}"
+    )
+    for filepath in paths:
+        if not any(filepath.name.endswith(ext) for ext in extensions):
+            module_logger.debug(
+                f"Skipping {filepath}: Extension {filepath.suffix} not in {extensions}"
+            )
+            continue
+        try:
+            mm = func(filepath)
+        except Exception as e:
+            module_logger.warning(
+                f"Extracting MeasureMap from {filepath} failed with\n{e!r}"
+            )
+            continue
+
+        input_folder = filepath.parent
+        if output_directory is None:
+            output_folder = input_folder
+        else:
+            output_folder = output_directory / input_folder.relative_to(directory)
+        output_filepath = make_measure_map_filepath(
+            filepath, measure_map_extension, output_folder
+        )
+        mm.to_json_file(output_filepath)
+        module_logger.info(f"Extracted MeasureMap {output_filepath} from {filepath}.")
 
 
 def collect_measure_maps(directory: Path | str) -> List[str]:
@@ -26,6 +76,21 @@ def get_m21_input_extensions() -> Tuple[str, ...]:
     ext2converter = converter.Converter.getSubConverterFormats()
     extensions = list(ext2converter.keys()) + [".mxl", ".krn"]
     return tuple(ext if ext[0] == "." else f".{ext}" for ext in extensions)
+
+
+def make_measure_map_filepath(
+    filepath: Path,
+    measure_map_extension: str = ".mm.json",
+    output_folder: Optional[Path] = None,
+):
+    output_folder.mkdir(parents=True, exist_ok=True)
+    if not measure_map_extension.endswith(".json"):
+        warnings.warn(
+            f"measure_map_extension should end with '.json', got: {measure_map_extension!r}"
+        )
+    output_filename = filepath.stem + measure_map_extension
+    output_filepath = output_folder / output_filename
+    return output_filepath
 
 
 def time_signature2nominal_length(time_signature: str) -> float:
