@@ -1,16 +1,60 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import warnings
 from fractions import Fraction
 from pathlib import Path
-from typing import Callable, Iterable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, Iterable, List, Optional, Tuple, Union
 
+import pandas as pd
 from music21 import converter
 
-from pymeasuremap.base import MeasureMap
-from pymeasuremap.extract import module_logger
+if TYPE_CHECKING:
+    from pymeasuremap.base import MeasureMap
+
+module_logger = logging.getLogger(__name__)
+
+
+def safe_fraction(s: str) -> Optional[Union[Fraction, str]]:
+    try:
+        return Fraction(s)
+    except Exception:
+        return
+
+
+def str2inttuple(tuple_string: str, strict: bool = True) -> Tuple[int]:
+    tuple_string = tuple_string.strip("(),")
+    if tuple_string == "":
+        return tuple()
+    res = []
+    for s in tuple_string.split(", "):
+        try:
+            res.append(int(s))
+        except ValueError:
+            if strict:
+                print(
+                    f"String value '{s}' could not be converted to an integer, "
+                    f"'{tuple_string}' not to an integer tuple."
+                )
+                raise
+            if s[0] == s[-1] and s[0] in ('"', "'"):
+                s = s[1:-1]
+            try:
+                res.append(int(s))
+            except ValueError:
+                res.append(s)
+    return tuple(res)
+
+
+TSV_COLUMN_CONVERTERS = {
+    "act_dur": safe_fraction,
+    "quarterbeats_all_endings": safe_fraction,
+    "quarterbeats": safe_fraction,
+    "next": str2inttuple,
+}
+TSV_COLUMN_DTYPES = {"mc": int, "volta": "Int64"}
 
 
 def apply_function_to_directory(
@@ -91,6 +135,79 @@ def make_measure_map_filepath(
     output_filename = filepath.stem + measure_map_extension
     output_filepath = output_folder / output_filename
     return output_filepath
+
+
+def load_tsv(
+    path, index_col=None, sep="\t", converters={}, dtype={}, stringtype=False, **kwargs
+) -> Optional[pd.DataFrame]:
+    """Loads the TSV file `path` while applying correct type conversion and parsing tuples.
+
+    Copied from ms3.utils.functions
+
+    Parameters
+    ----------
+    path : :obj:`str`
+        Path to a TSV file as output by format_data().
+    index_col : :obj:`list`, optional
+        By default, the first two columns are loaded as MultiIndex.
+        The first level distinguishes pieces and the second level the elements within.
+    converters, dtype : :obj:`dict`, optional
+        Enhances or overwrites the mapping from column names to types included the constants.
+    stringtype : :obj:`bool`, optional
+        If you're using pandas >= 1.0.0 you might want to set this to True in order
+        to be using the new `string` datatype that includes the new null type `pd.NA`.
+    """
+
+    if converters is None:
+        conv = None
+    else:
+        conv = dict(TSV_COLUMN_CONVERTERS)
+        conv.update(converters)
+
+    if dtype is None:
+        types = None
+    elif isinstance(dtype, str):
+        types = dtype
+    else:
+        types = dict(TSV_COLUMN_DTYPES)
+        types.update(dtype)
+
+    if stringtype:
+        types = {col: "string" if typ == str else typ for col, typ in types.items()}
+    try:
+        df = pd.read_csv(
+            path, sep=sep, index_col=index_col, dtype=types, converters=conv, **kwargs
+        )
+    except pd.EmptyDataError:
+        return
+    if "mn" in df:
+        mn_volta = mn2int(df.mn)
+        df.mn = mn_volta.mn
+        if mn_volta.volta.notna().any():
+            if "volta" not in df.columns:
+                df["volta"] = pd.Series(pd.NA, index=df.index).astype("Int64")
+            df.volta.fillna(mn_volta.volta, inplace=True)
+    return df
+
+
+def mn2int(mn_series):
+    """Turn a series of measure numbers parsed as strings into two integer columns 'mn' and 'volta'.
+
+    Copied from ms3.utils.functions.
+    """
+    try:
+        split = mn_series.fillna("").str.extract(r"(?P<mn>\d+)(?P<volta>[a-g])?")
+    except Exception:
+        mn_series = pd.DataFrame(mn_series, columns=["mn", "volta"])
+        try:
+            return mn_series.astype("Int64")
+        except Exception:
+            return mn_series
+    split.mn = pd.to_numeric(split.mn)
+    split.volta = pd.to_numeric(
+        split.volta.map({"a": 1, "b": 2, "c": 3, "d": 4, "e": 5})
+    )
+    return split.astype("Int64")
 
 
 def time_signature2nominal_length(time_signature: str) -> float:
