@@ -15,6 +15,7 @@ from pymeasuremap import __version__
 __license__ = "CC BY-SA 4.0"
 
 from pymeasuremap.compare import one_comparison, run_corpus
+from pymeasuremap.convert import convert_directory
 from pymeasuremap.extract import extract_directory
 from pymeasuremap.utils import get_m21_input_extensions, resolve_dir
 
@@ -36,6 +37,16 @@ def compare_cmd(args):
         for pref_path in args.files:
             other_path = pref_path.parent / "other_measure_map.json"
             one_comparison(pref_path, other_path)
+
+
+def convert_cmd(args):
+    convert_directory(
+        directory=args.dir,
+        output_directory=args.out,
+        file_regex=args.regex,
+        extensions=args.extensions,
+        measure_map_extension=args.mm_extension,
+    )
 
 
 def extract_cmd(args):
@@ -134,6 +145,25 @@ The library offers you the following commands. Add the flag -h to one of them to
         parents=[default_args],
     )
     compare_parser.set_defaults(func=compare_cmd)
+
+    convert_parser = subparsers.add_parser(
+        "convert",
+        help="Convert non-score formats to measure maps. Currently, conversion is implemented for .tsv 'measures' "
+        "tables output by the ms3 parser.",
+        parents=[default_args],
+    )
+    convert_parser.add_argument(
+        "-x",
+        "--extensions",
+        nargs="+",
+        default=[".tsv"],
+        help="File extensions to discover and convert to MeasureMaps. Defaults to '.tsv'.",
+    )
+    convert_parser.add_argument(
+        "--mm-extension",
+        default=".mm.json",
+    )
+    convert_parser.set_defaults(func=convert_cmd)
 
     extract_parser = subparsers.add_parser(
         "extract",
