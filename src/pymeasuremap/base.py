@@ -291,6 +291,11 @@ class PMeasureMap(Protocol):
         predecessors are omitted."""
         ...
 
+    def decompress(self):
+        """Returns a decompressed version of the given measure map, where entries that had been omitted are restored
+        based on the default values."""
+        ...
+
     def to_dicts(self, verbose: bool) -> List[dict]:
         ...
 
