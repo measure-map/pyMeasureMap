@@ -9,6 +9,11 @@ def test_compression(single_mm_path):
     assert len(compressed.entries) < len(MM.entries)
 
 
+def test_decompression():
+    mm = MeasureMap.from_dicts([{"time_signature": "2/2"}, {"number": 563}])
+    print(mm[0])
+
+
 def test_json_output(single_mm_path, tmp_path):
     mm = MeasureMap.from_json_file(single_mm_path)
     tmp_filepath = tmp_path / "temp.mm.json"

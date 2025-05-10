@@ -6,7 +6,15 @@ import warnings
 from dataclasses import asdict, astuple, dataclass
 from numbers import Number
 from pathlib import Path
-from typing import Iterator, List, Optional, Protocol, Sequence, runtime_checkable
+from typing import (
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Protocol,
+    Sequence,
+    runtime_checkable,
+)
 
 from pymeasuremap.utils import store_json, time_signature2nominal_length
 
@@ -283,6 +291,11 @@ class PMeasureMap(Protocol):
         predecessors are omitted."""
         ...
 
+    def decompress(self):
+        """Returns a decompressed version of the given measure map, where entries that had been omitted are restored
+        based on the default values."""
+        ...
+
     def to_dicts(self, verbose: bool) -> List[dict]:
         ...
 
@@ -315,6 +328,46 @@ class MeasureMap(PMeasureMap):
             return next(entry for entry in self.entries if entry.count == item)
         except StopIteration:
             raise IndexError(f"MeasureMap has no entry with count {item!r}")
+
+    @classmethod
+    def from_array(
+        cls,
+        ID: Optional[Iterable[str]] = None,
+        count: Optional[Iterable[int]] = None,
+        qstamp: Optional[Iterable[Number]] = None,
+        number: Optional[Iterable[int]] = None,
+        name: Optional[Iterable[str]] = None,
+        time_signature: Optional[Iterable[str]] = None,
+        nominal_length: Optional[Iterable[Number]] = None,
+        actual_length: Optional[Iterable[Number]] = None,
+        start_repeat: Optional[Iterable[bool]] = None,
+        end_repeat: Optional[Iterable[bool]] = None,
+        next: Optional[Iterable[list[int]]] = None,
+    ) -> MeasureMap:
+        defined_arrays = {
+            field: iterable
+            for field, iterable in (
+                ("ID", ID),
+                ("count", count),
+                ("qstamp", qstamp),
+                ("number", number),
+                ("name", name),
+                ("time_signature", time_signature),
+                ("nominal_length", nominal_length),
+                ("actual_length", actual_length),
+                ("start_repeat", start_repeat),
+                ("end_repeat", end_repeat),
+                ("next", next),
+            )
+            if iterable is not None
+        }
+        if not defined_arrays:
+            raise ValueError("At least one field must be defined.")
+        defined_keys = tuple(defined_arrays.keys())
+        mm_items = []
+        for values in zip(*defined_arrays.values()):
+            mm_items.append(Measure(**dict(zip(defined_keys, values))))
+        return cls(mm_items)
 
     @classmethod
     def from_dicts(cls, sequence_of_dicts: Sequence[dict]) -> MeasureMap:

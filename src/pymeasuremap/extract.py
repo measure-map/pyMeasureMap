@@ -1,13 +1,12 @@
 """Generate MeasureMaps from scores and annotation files."""
 import logging
-import warnings
 from pathlib import Path
 from typing import Iterable, Optional
 
 from music21 import bar, converter, stream
 
 from pymeasuremap.base import MeasureMap
-from pymeasuremap.utils import get_m21_input_extensions, resolve_dir
+from pymeasuremap.utils import apply_function_to_directory
 
 module_logger = logging.getLogger(__name__)
 
@@ -145,54 +144,11 @@ def extract_directory(
     extensions: Optional[str | Iterable[str]] = None,
     measure_map_extension: str = ".mm.json",
 ):
-    directory = resolve_dir(directory)
-    if output_directory is not None:
-        output_directory = resolve_dir(output_directory)
-    if extensions is None:
-        extensions = get_m21_input_extensions()
-    elif isinstance(extensions, str):
-        extensions = [extensions]
-    paths = directory.rglob(file_regex)
-    module_logger.info(
-        f"Iterating through paths within {directory} that match the regex {file_regex!r} and have one "
-        f"of these extensions: {extensions!r}"
+    return apply_function_to_directory(
+        func=m21_filepath_to_measure_map,
+        directory=directory,
+        output_directory=output_directory,
+        file_regex=file_regex,
+        extensions=extensions,
+        measure_map_extension=measure_map_extension,
     )
-    for filepath in paths:
-        if not any(filepath.name.endswith(ext) for ext in extensions):
-            module_logger.debug(
-                f"Skipping {filepath}: Extension {filepath.suffix} not in {extensions}"
-            )
-            continue
-        try:
-            mm = m21_filepath_to_measure_map(filepath)
-        except Exception as e:
-            module_logger.warning(
-                f"Extracting MeasureMap from {filepath} failed with\n{e!r}"
-            )
-            continue
-
-        input_folder = filepath.parent
-        if output_directory is None:
-            output_folder = input_folder
-        else:
-            output_folder = output_directory / input_folder.relative_to(directory)
-        output_filepath = make_measure_map_filepath(
-            filepath, measure_map_extension, output_folder
-        )
-        mm.to_json_file(output_filepath)
-        module_logger.info(f"Extracted MeasureMap {output_filepath} from {filepath}.")
-
-
-def make_measure_map_filepath(
-    filepath: Path,
-    measure_map_extension: str = ".mm.json",
-    output_folder: Optional[Path] = None,
-):
-    output_folder.mkdir(parents=True, exist_ok=True)
-    if not measure_map_extension.endswith(".json"):
-        warnings.warn(
-            f"measure_map_extension should end with '.json', got: {measure_map_extension!r}"
-        )
-    output_filename = filepath.stem + measure_map_extension
-    output_filepath = output_folder / output_filename
-    return output_filepath
