@@ -11,7 +11,7 @@ from pymeasuremap.utils import apply_function_to_directory
 module_logger = logging.getLogger(__name__)
 
 
-def m21_part_to_measure_map(this_part: stream.Part) -> MeasureMap:
+def m21_part_to_measure_map(this_part: stream.Part, part_index: int) -> MeasureMap:
     """
     Mapping from a music21.stream.part
     to a "measure map": currently a list of dicts with the following keys:
@@ -32,7 +32,8 @@ def m21_part_to_measure_map(this_part: stream.Part) -> MeasureMap:
     time_sig = this_part.getElementsByClass(stream.Measure)[0].timeSignature.ratioString
     count = 1
 
-    for measure in this_part.recurse().getElementsByClass(stream.Measure):
+    for offset, measure_list in this_part.measureOffsetMap().items():
+        measure = measure_list[part_index]
         end_repeat = False
         start_repeat = False
         next = []
@@ -69,7 +70,7 @@ def m21_part_to_measure_map(this_part: stream.Part) -> MeasureMap:
         measure_dict = {
             # ID
             "count": count,
-            "qstamp": measure.offset,
+            "qstamp": offset,
             "number": measure.measureNumber,
             # "name"
             "time_signature": time_sig,
@@ -100,12 +101,12 @@ def m21_stream_to_measure_map(
     """
 
     if isinstance(this_stream, stream.Part):
-        return m21_part_to_measure_map(this_stream)
+        raise ValueError("Use m21_part_to_measure_map() and pass part's index.")
 
     if not isinstance(this_stream, stream.Score):
         raise ValueError("Only accepts a stream.Part or stream.Score")
 
-    measure_map = m21_part_to_measure_map(this_stream.parts[0])
+    measure_map = m21_part_to_measure_map(this_stream.parts[0], part_index=0)
 
     if not check_parts_match:
         return measure_map
@@ -116,7 +117,9 @@ def m21_stream_to_measure_map(
         return measure_map
 
     for part in range(1, num_parts):
-        part_measure_map = m21_part_to_measure_map(this_stream.parts[part])
+        part_measure_map = m21_part_to_measure_map(
+            this_stream.parts[part], part_index=part
+        )
         if part_measure_map != measure_map:
             raise ValueError(f"Parts 0 and {part} do not match.")
 
