@@ -32,3 +32,10 @@ def test_json_output(single_mm_path, tmp_path):
             f"Comparing original {single_mm_path} with {tmp_filepath}:\n\n{diff_str}..."
         )
         assert diff_str == ""
+
+
+def test_json_output_to_bare_filename(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    mm = MeasureMap.from_array(count=[1, 2], time_signature=["4/4"] * 2)
+    mm.to_json_file("temp.mm.json")
+    assert MeasureMap.from_json_file("temp.mm.json") == mm

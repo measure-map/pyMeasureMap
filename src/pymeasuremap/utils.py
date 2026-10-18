@@ -253,8 +253,8 @@ def store_json(
     """
     filepath = str(filepath)
     kwargs = dict(indent=indent, **kwargs)
-    if make_dirs:
-        directory = os.path.dirname(filepath)
+    directory = os.path.dirname(filepath)
+    if make_dirs and directory:
         os.makedirs(directory, exist_ok=True)
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(data, f, **kwargs)
