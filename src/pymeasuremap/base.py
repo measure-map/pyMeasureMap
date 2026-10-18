@@ -291,7 +291,7 @@ class PMeasureMap(Protocol):
         predecessors are omitted."""
         ...
 
-    def decompress(self):
+    def decompress(self, ignore_ids: bool = False) -> MeasureMap:
         """Returns a decompressed version of the given measure map, where entries that had been omitted are restored
         based on the default values."""
         ...
@@ -385,6 +385,11 @@ class MeasureMap(PMeasureMap):
         predecessors are omitted."""
         return compress_measure_map(self, ignore_ids=ignore_ids)
 
+    def decompress(self, ignore_ids: bool = False) -> MeasureMap:
+        """Returns a decompressed version of the given measure map, where entries that had been omitted are restored
+        based on the default values."""
+        return decompress_measure_map(self, ignore_ids=ignore_ids)
+
     def iter_tuples(
         self,
         ID: bool = True,
@@ -438,7 +443,7 @@ def compress_measure_map(
     measure_map: MeasureMap, ignore_ids: bool = False
 ) -> MeasureMap:
     """Returns a compressed version of the given measure map, where entries that can be restored from their
-    predecessors are omitted."""
+    predecessors are omitted. The first and the last entry are always maintained."""
     if not isinstance(measure_map, MeasureMap):
         raise TypeError(
             f"measure_map must be a MeasureMap, got {type(measure_map)!r}: {measure_map!r}"
@@ -466,7 +471,34 @@ def compress_measure_map(
                 f"\t(2) {measure}"
             )
         previous_measure = measure
+    if compressed_entries[-1] is not previous_measure:
+        compressed_entries.append(previous_measure)
+        module_logger.debug("Last entry maintained by default.")
     return MeasureMap(compressed_entries)
+
+
+def decompress_measure_map(
+    measure_map: MeasureMap, ignore_ids: bool = False
+) -> MeasureMap:
+    """Returns a decompressed version of the given measure map, where entries that had been omitted are restored
+    based on the default values. Gaps are detected based on the 'count' field."""
+    if not isinstance(measure_map, MeasureMap):
+        raise TypeError(
+            f"measure_map must be a MeasureMap, got {type(measure_map)!r}: {measure_map!r}"
+        )
+    if any(measure.count is None for measure in measure_map):
+        raise ValueError("Cannot decompress entries that do not specify 'count'.")
+    decompressed_entries = []
+    for measure in measure_map:
+        if decompressed_entries:
+            previous_measure = decompressed_entries[-1]
+            while previous_measure.count + 1 < measure.count:
+                previous_measure = previous_measure.get_default_successor(
+                    ignore_ids=ignore_ids
+                )
+                decompressed_entries.append(previous_measure)
+        decompressed_entries.append(measure)
+    return MeasureMap(decompressed_entries)
 
 
 # endregion MeasureMap
