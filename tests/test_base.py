@@ -20,6 +20,11 @@ def test_decompression_of_trailing_entries():
     assert MM.compress().decompress() == MM
 
 
+def test_decompression_without_time_signature():
+    MM = MeasureMap.from_array(count=[1, 2, 3], actual_length=[2.0] * 3)
+    assert MM.compress().decompress() == MM
+
+
 def test_json_output(single_mm_path, tmp_path):
     mm = MeasureMap.from_json_file(single_mm_path)
     tmp_filepath = tmp_path / "temp.mm.json"

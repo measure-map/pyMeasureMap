@@ -208,7 +208,10 @@ def make_default_successor(measure: Measure, ignore_ids: bool = False) -> Measur
                 f"specified and cannot be determined from 'time_signature' = {measure.time_signature}."
             ) from e
         successor_values["qstamp"] += actual_length
-    if successor_values["actual_length"] is not None:
+    if successor_values["actual_length"] is not None and (
+        measure.nominal_length is not None or measure.time_signature is not None
+    ):
+        # without a nominal length, the successor is expected to have the same actual length
         successor_values["actual_length"] = measure.get_nominal_length()
     count_field_is_present = successor_values["count"] is not None
     number_field_is_present = successor_values["number"] is not None

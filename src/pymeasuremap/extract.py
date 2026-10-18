@@ -29,7 +29,7 @@ def m21_part_to_measure_map(this_part: stream.Part) -> MeasureMap:
     sheet_measure_map = []
     go_back_to = 1
     go_forward_from = 1
-    time_sig = this_part.getElementsByClass(stream.Measure)[0].timeSignature.ratioString
+    time_sig = None  # remains unspecified until a time signature is encountered
     count = 1
 
     for measure in this_part.recurse().getElementsByClass(stream.Measure):
@@ -73,7 +73,9 @@ def m21_part_to_measure_map(this_part: stream.Part) -> MeasureMap:
             "number": measure.measureNumber,
             # "name"
             "time_signature": time_sig,
-            "nominal_length": measure.barDuration.quarterLength,
+            "nominal_length": (
+                None if time_sig is None else measure.barDuration.quarterLength
+            ),
             "actual_length": measure.duration.quarterLength,
             "start_repeat": start_repeat,
             "end_repeat": end_repeat,
