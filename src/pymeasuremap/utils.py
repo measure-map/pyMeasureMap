@@ -117,7 +117,7 @@ def collect_measure_maps(directory: Path | str) -> List[str]:
 
 def get_m21_input_extensions() -> Tuple[str, ...]:
     """Returns all file extensions that music21 can parse."""
-    ext2converter = converter.Converter.getSubConverterFormats()
+    ext2converter = converter.Converter().getSubConverterFormats()
     extensions = list(ext2converter.keys()) + [".mxl", ".krn"]
     return tuple(ext if ext[0] == "." else f".{ext}" for ext in extensions)
 
