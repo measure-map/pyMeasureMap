@@ -31,7 +31,7 @@ module_logger = logging.getLogger(__name__)
 
 def compare_cmd(args):
     print("Comparing MeasureMaps...")
-    if args.dir is None:
+    if args.files is None:
         run_corpus(args.dir)
     else:
         for pref_path in args.files:
@@ -105,7 +105,6 @@ def get_arg_parser():
         "--files",
         metavar="PATH",
         nargs="+",
-        type=check_dir,
         help="List of files to process. If -d is passed, relative file paths are resolved against the given directory.",
     )
     default_args.add_argument(
