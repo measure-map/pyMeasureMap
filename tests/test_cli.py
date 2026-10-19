@@ -1,3 +1,7 @@
+import argparse
+
+import pytest
+
 from pymeasuremap import cli
 
 
@@ -20,3 +24,8 @@ def test_compare_cmd_with_files(tmp_path, monkeypatch):
     assert calls == [
         (tmp_path / "preferred_measure_map.json", tmp_path / "other_measure_map.json")
     ]
+
+
+def test_check_dir_with_missing_directory(tmp_path):
+    with pytest.raises(argparse.ArgumentTypeError, match="needs to be an existing"):
+        cli.check_dir(tmp_path / "missing")
