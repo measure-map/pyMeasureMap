@@ -1,5 +1,7 @@
 from difflib import unified_diff
 
+import pytest
+
 from pymeasuremap.base import MeasureMap
 
 
@@ -23,6 +25,14 @@ def test_decompression_of_trailing_entries():
 def test_decompression_without_time_signature():
     MM = MeasureMap.from_array(count=[1, 2, 3], actual_length=[2.0] * 3)
     assert MM.compress().decompress() == MM
+
+
+def test_volta():
+    MM = MeasureMap.from_array(count=[1, 2, 3, 4], volta=[None, 1, 1, 2])
+    assert MM.compress().decompress() == MM
+    assert MM.to_dicts()[1] == {"count": 2, "volta": 1}
+    with pytest.raises(AssertionError):
+        MeasureMap.from_array(count=[1, 2], volta=[0, 1])
 
 
 def test_json_output(single_mm_path, tmp_path):

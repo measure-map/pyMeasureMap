@@ -41,6 +41,7 @@ class Compare:
         actual_length: bool = True,
         start_repeat: bool = True,
         end_repeat: bool = True,
+        volta: bool = True,
         next: bool = True,
     ) -> bool:
         """Compare two measure maps and return True if the activated fields are identical, False otherwise."""
@@ -60,6 +61,7 @@ class Compare:
             actual_length,
             start_repeat,
             end_repeat,
+            volta,
             next,
         )
         for preferred_tup, other_tup in zip(
@@ -80,6 +82,7 @@ class Compare:
                             "actual_length",
                             "start_repeat",
                             "end_repeat",
+                            "volta",
                             "next",
                         ),
                         mask,
@@ -107,6 +110,7 @@ class Compare:
         actual_length: bool = True,
         start_repeat: bool = True,
         end_repeat: bool = True,
+        volta: bool = True,
         next: bool = True,
         entries_threshold: Optional[int] = None,
     ) -> str:
@@ -130,6 +134,7 @@ class Compare:
             actual_length,
             start_repeat,
             end_repeat,
+            volta,
             next,
         )
         for preferred_tup, other_tup in zip(
@@ -150,6 +155,7 @@ class Compare:
                             "actual_length",
                             "start_repeat",
                             "end_repeat",
+                            "volta",
                             "next",
                         ),
                         mask,

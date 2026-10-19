@@ -50,6 +50,8 @@ class PMeasure(Protocol):
     """Typical usage is with the bool type, with 'true' indicating a start repeat at the beginning of the measure."""
     end_repeat: Optional[bool]
     """Typical usage is with the bool type, with 'true' indicating an end repeat at the end of the measure."""
+    volta: Optional[int]
+    """The number of the volta (ending) that this measure is part of, e.g. 1 for a first and 2 for a second ending."""
     next: Optional[list[int]]
     """A list of measure IDs that follow this measure."""
 
@@ -95,6 +97,7 @@ class Measure(PMeasure):
     actual_length: Optional[Number] = None
     start_repeat: Optional[bool] = None
     end_repeat: Optional[bool] = None
+    volta: Optional[int] = None
     next: Optional[list[int]] = None
 
     def __post_init__(self):
@@ -136,6 +139,11 @@ class Measure(PMeasure):
             self.start_repeat = bool(self.start_repeat)
         if self.end_repeat is not None:
             self.end_repeat = bool(self.end_repeat)
+        if self.volta is not None:
+            self.volta = int(self.volta)
+            assert (
+                self.volta > 0
+            ), f"volta must be a positive integer, got {self.volta!r}"
         if self.next is not None:
             self.next = list(self.next)
 
@@ -345,6 +353,7 @@ class MeasureMap(PMeasureMap):
         actual_length: Optional[Iterable[Number]] = None,
         start_repeat: Optional[Iterable[bool]] = None,
         end_repeat: Optional[Iterable[bool]] = None,
+        volta: Optional[Iterable[int]] = None,
         next: Optional[Iterable[list[int]]] = None,
     ) -> MeasureMap:
         defined_arrays = {
@@ -360,6 +369,7 @@ class MeasureMap(PMeasureMap):
                 ("actual_length", actual_length),
                 ("start_repeat", start_repeat),
                 ("end_repeat", end_repeat),
+                ("volta", volta),
                 ("next", next),
             )
             if iterable is not None
@@ -405,6 +415,7 @@ class MeasureMap(PMeasureMap):
         actual_length: bool = True,
         start_repeat: bool = True,
         end_repeat: bool = True,
+        volta: bool = True,
         next: bool = True,
     ) -> Iterator[tuple]:
         mask = (
@@ -418,6 +429,7 @@ class MeasureMap(PMeasureMap):
             actual_length,
             start_repeat,
             end_repeat,
+            volta,
             next,
         )
         if not any(mask):

@@ -60,6 +60,12 @@ def measures_df2measure_map(measures_df: pd.DataFrame) -> MeasureMap:
     start_repeat_col = measures_df.repeats.str.contains("start").fillna(False)
     end_repeat_col = measures_df.repeats.str.contains("end").fillna(False)
     next_col = measures_df.next.map(list)
+    if "volta" in measures_df:
+        volta_col = measures_df.volta.astype(object).where(
+            measures_df.volta.notna(), None
+        )
+    else:
+        volta_col = None
 
     return MeasureMap.from_array(
         ID=id_col.values,
@@ -72,6 +78,7 @@ def measures_df2measure_map(measures_df: pd.DataFrame) -> MeasureMap:
         actual_length=actual_col.values,
         start_repeat=start_repeat_col.values,
         end_repeat=end_repeat_col.values,
+        volta=None if volta_col is None else volta_col.values,
         next=next_col.values,
     )
 
