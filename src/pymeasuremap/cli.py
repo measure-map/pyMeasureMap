@@ -31,7 +31,7 @@ module_logger = logging.getLogger(__name__)
 
 def compare_cmd(args):
     print("Comparing MeasureMaps...")
-    if args.dir is None:
+    if args.files is None:
         run_corpus(args.dir)
     else:
         for pref_path in args.files:
@@ -77,7 +77,7 @@ def check_dir(d):
     if not os.path.isdir(d):
         d = resolve_dir(os.path.join(os.getcwd(), d))
         if not os.path.isdir(d):
-            raise argparse.ArgumentTypeError(d + " needs to be an existing directory")
+            raise argparse.ArgumentTypeError(f"{d} needs to be an existing directory")
     return resolve_dir(d)
 
 
@@ -105,7 +105,6 @@ def get_arg_parser():
         "--files",
         metavar="PATH",
         nargs="+",
-        type=check_dir,
         help="List of files to process. If -d is passed, relative file paths are resolved against the given directory.",
     )
     default_args.add_argument(

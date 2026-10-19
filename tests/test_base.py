@@ -1,5 +1,7 @@
 from difflib import unified_diff
 
+import pytest
+
 from pymeasuremap.base import MeasureMap
 
 
@@ -9,9 +11,28 @@ def test_compression(single_mm_path):
     assert len(compressed.entries) < len(MM.entries)
 
 
-def test_decompression():
-    mm = MeasureMap.from_dicts([{"time_signature": "2/2"}, {"number": 563}])
-    print(mm[0])
+def test_decompression(single_mm_path):
+    MM = MeasureMap.from_json_file(single_mm_path)
+    assert MM.compress().decompress() == MM
+
+
+def test_decompression_of_trailing_entries():
+    MM = MeasureMap.from_array(count=[1, 2, 3], time_signature=["4/4"] * 3)
+    assert len(MM.compress().entries) == 2
+    assert MM.compress().decompress() == MM
+
+
+def test_decompression_without_time_signature():
+    MM = MeasureMap.from_array(count=[1, 2, 3], actual_length=[2.0] * 3)
+    assert MM.compress().decompress() == MM
+
+
+def test_volta():
+    MM = MeasureMap.from_array(count=[1, 2, 3, 4], volta=[None, 1, 1, 2])
+    assert MM.compress().decompress() == MM
+    assert MM.to_dicts()[1] == {"count": 2, "volta": 1}
+    with pytest.raises(AssertionError):
+        MeasureMap.from_array(count=[1, 2], volta=[0, 1])
 
 
 def test_json_output(single_mm_path, tmp_path):
@@ -26,3 +47,10 @@ def test_json_output(single_mm_path, tmp_path):
             f"Comparing original {single_mm_path} with {tmp_filepath}:\n\n{diff_str}..."
         )
         assert diff_str == ""
+
+
+def test_json_output_to_bare_filename(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    mm = MeasureMap.from_array(count=[1, 2], time_signature=["4/4"] * 2)
+    mm.to_json_file("temp.mm.json")
+    assert MeasureMap.from_json_file("temp.mm.json") == mm

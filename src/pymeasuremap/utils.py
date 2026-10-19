@@ -117,7 +117,7 @@ def collect_measure_maps(directory: Path | str) -> List[str]:
 
 def get_m21_input_extensions() -> Tuple[str, ...]:
     """Returns all file extensions that music21 can parse."""
-    ext2converter = converter.Converter.getSubConverterFormats()
+    ext2converter = converter.Converter().getSubConverterFormats()
     extensions = list(ext2converter.keys()) + [".mxl", ".krn"]
     return tuple(ext if ext[0] == "." else f".{ext}" for ext in extensions)
 
@@ -253,8 +253,8 @@ def store_json(
     """
     filepath = str(filepath)
     kwargs = dict(indent=indent, **kwargs)
-    if make_dirs:
-        directory = os.path.dirname(filepath)
+    directory = os.path.dirname(filepath)
+    if make_dirs and directory:
         os.makedirs(directory, exist_ok=True)
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(data, f, **kwargs)

@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 from typing import Iterable, Optional
 
-from music21 import bar, converter, stream
+from music21 import bar, converter, spanner, stream
 
 from pymeasuremap.base import MeasureMap
 from pymeasuremap.utils import apply_function_to_directory
@@ -23,13 +23,14 @@ def m21_part_to_measure_map(this_part: stream.Part) -> MeasureMap:
         "actual_length": int | float,  # expressed in quarterLength. Could also be as proportion
         "start_repeat": bool,
         "end_repeat": bool
+        "volta": int | None,
         "next": lst of str
     """
 
     sheet_measure_map = []
     go_back_to = 1
     go_forward_from = 1
-    time_sig = this_part.getElementsByClass(stream.Measure)[0].timeSignature.ratioString
+    time_sig = None  # remains unspecified until a time signature is encountered
     count = 1
 
     for measure in this_part.recurse().getElementsByClass(stream.Measure):
@@ -59,6 +60,11 @@ def m21_part_to_measure_map(this_part: stream.Part) -> MeasureMap:
                 sheet_measure_map[go_forward_from - 1]["next"].append(count)
             elif measure.leftBarline.type == "regular":
                 go_forward_from = count - 1
+        volta = None
+        for repeat_bracket in measure.getSpannerSites([spanner.RepeatBracket]):
+            if repeat_bracket.numberRange:
+                volta = repeat_bracket.numberRange[0]
+
         if end_repeat:
             next.append(go_back_to)
         if count + 1 <= len(
@@ -73,10 +79,13 @@ def m21_part_to_measure_map(this_part: stream.Part) -> MeasureMap:
             "number": measure.measureNumber,
             # "name"
             "time_signature": time_sig,
-            "nominal_length": measure.barDuration.quarterLength,
+            "nominal_length": (
+                None if time_sig is None else measure.barDuration.quarterLength
+            ),
             "actual_length": measure.duration.quarterLength,
             "start_repeat": start_repeat,
             "end_repeat": end_repeat,
+            "volta": volta,
             "next": next,
         }
 

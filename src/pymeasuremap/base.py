@@ -50,6 +50,8 @@ class PMeasure(Protocol):
     """Typical usage is with the bool type, with 'true' indicating a start repeat at the beginning of the measure."""
     end_repeat: Optional[bool]
     """Typical usage is with the bool type, with 'true' indicating an end repeat at the end of the measure."""
+    volta: Optional[int]
+    """The number of the volta (ending) that this measure is part of, e.g. 1 for a first and 2 for a second ending."""
     next: Optional[list[int]]
     """A list of measure IDs that follow this measure."""
 
@@ -95,6 +97,7 @@ class Measure(PMeasure):
     actual_length: Optional[Number] = None
     start_repeat: Optional[bool] = None
     end_repeat: Optional[bool] = None
+    volta: Optional[int] = None
     next: Optional[list[int]] = None
 
     def __post_init__(self):
@@ -136,6 +139,11 @@ class Measure(PMeasure):
             self.start_repeat = bool(self.start_repeat)
         if self.end_repeat is not None:
             self.end_repeat = bool(self.end_repeat)
+        if self.volta is not None:
+            self.volta = int(self.volta)
+            assert (
+                self.volta > 0
+            ), f"volta must be a positive integer, got {self.volta!r}"
         if self.next is not None:
             self.next = list(self.next)
 
@@ -208,7 +216,10 @@ def make_default_successor(measure: Measure, ignore_ids: bool = False) -> Measur
                 f"specified and cannot be determined from 'time_signature' = {measure.time_signature}."
             ) from e
         successor_values["qstamp"] += actual_length
-    if successor_values["actual_length"] is not None:
+    if successor_values["actual_length"] is not None and (
+        measure.nominal_length is not None or measure.time_signature is not None
+    ):
+        # without a nominal length, the successor is expected to have the same actual length
         successor_values["actual_length"] = measure.get_nominal_length()
     count_field_is_present = successor_values["count"] is not None
     number_field_is_present = successor_values["number"] is not None
@@ -291,7 +302,7 @@ class PMeasureMap(Protocol):
         predecessors are omitted."""
         ...
 
-    def decompress(self):
+    def decompress(self, ignore_ids: bool = False) -> MeasureMap:
         """Returns a decompressed version of the given measure map, where entries that had been omitted are restored
         based on the default values."""
         ...
@@ -342,6 +353,7 @@ class MeasureMap(PMeasureMap):
         actual_length: Optional[Iterable[Number]] = None,
         start_repeat: Optional[Iterable[bool]] = None,
         end_repeat: Optional[Iterable[bool]] = None,
+        volta: Optional[Iterable[int]] = None,
         next: Optional[Iterable[list[int]]] = None,
     ) -> MeasureMap:
         defined_arrays = {
@@ -357,6 +369,7 @@ class MeasureMap(PMeasureMap):
                 ("actual_length", actual_length),
                 ("start_repeat", start_repeat),
                 ("end_repeat", end_repeat),
+                ("volta", volta),
                 ("next", next),
             )
             if iterable is not None
@@ -385,6 +398,11 @@ class MeasureMap(PMeasureMap):
         predecessors are omitted."""
         return compress_measure_map(self, ignore_ids=ignore_ids)
 
+    def decompress(self, ignore_ids: bool = False) -> MeasureMap:
+        """Returns a decompressed version of the given measure map, where entries that had been omitted are restored
+        based on the default values."""
+        return decompress_measure_map(self, ignore_ids=ignore_ids)
+
     def iter_tuples(
         self,
         ID: bool = True,
@@ -397,6 +415,7 @@ class MeasureMap(PMeasureMap):
         actual_length: bool = True,
         start_repeat: bool = True,
         end_repeat: bool = True,
+        volta: bool = True,
         next: bool = True,
     ) -> Iterator[tuple]:
         mask = (
@@ -410,6 +429,7 @@ class MeasureMap(PMeasureMap):
             actual_length,
             start_repeat,
             end_repeat,
+            volta,
             next,
         )
         if not any(mask):
@@ -438,7 +458,7 @@ def compress_measure_map(
     measure_map: MeasureMap, ignore_ids: bool = False
 ) -> MeasureMap:
     """Returns a compressed version of the given measure map, where entries that can be restored from their
-    predecessors are omitted."""
+    predecessors are omitted. The first and the last entry are always maintained."""
     if not isinstance(measure_map, MeasureMap):
         raise TypeError(
             f"measure_map must be a MeasureMap, got {type(measure_map)!r}: {measure_map!r}"
@@ -466,7 +486,34 @@ def compress_measure_map(
                 f"\t(2) {measure}"
             )
         previous_measure = measure
+    if compressed_entries[-1] is not previous_measure:
+        compressed_entries.append(previous_measure)
+        module_logger.debug("Last entry maintained by default.")
     return MeasureMap(compressed_entries)
+
+
+def decompress_measure_map(
+    measure_map: MeasureMap, ignore_ids: bool = False
+) -> MeasureMap:
+    """Returns a decompressed version of the given measure map, where entries that had been omitted are restored
+    based on the default values. Gaps are detected based on the 'count' field."""
+    if not isinstance(measure_map, MeasureMap):
+        raise TypeError(
+            f"measure_map must be a MeasureMap, got {type(measure_map)!r}: {measure_map!r}"
+        )
+    if any(measure.count is None for measure in measure_map):
+        raise ValueError("Cannot decompress entries that do not specify 'count'.")
+    decompressed_entries = []
+    for measure in measure_map:
+        if decompressed_entries:
+            previous_measure = decompressed_entries[-1]
+            while previous_measure.count + 1 < measure.count:
+                previous_measure = previous_measure.get_default_successor(
+                    ignore_ids=ignore_ids
+                )
+                decompressed_entries.append(previous_measure)
+        decompressed_entries.append(measure)
+    return MeasureMap(decompressed_entries)
 
 
 # endregion MeasureMap
