@@ -89,6 +89,26 @@ Parsing all files in ``path/to/chorales`` that music21 can parse::
     MM extract -d path/to/corpus -r "^bwv"          # only parses files that match the regex (i.e., start with "bwv")
     MM extract -d path/to/corpus -x .mxl .xml       # only parses files with the specified extensions
 
+Extracting measure maps with Verovio
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+With the optional dependency installed (``pip install "pyMeasureMap[verovio]"``), measure maps can be extracted from
+any format that Verovio reads (MEI, MusicXML, Humdrum, ABC, PAE). Each entry includes the measure's ``xml:id`` as
+``ID``, and ``next`` is inferred from repeat barlines, voltas, and jump markers (D.C., D.S., Fine, To Coda)::
+
+    MM extract -b verovio -d path/to/corpus
+
+.. code-block:: python
+
+   from pymeasuremap.vrv import verovio_to_measure_map
+
+   mm = verovio_to_measure_map("path/to/score.mei")
+   mm = verovio_to_measure_map("path/to/score.musicxml", next_from="expansion")  # use Verovio's unfolding instead
+   mm = verovio_to_measure_map("path/to/score.mei", next_as="ID")  # 'next' lists IDs instead of counts
+
+If the score contains an ``<expansion>`` (and always for MusicXML, for which Verovio creates one), the inferred
+``next`` values are checked against Verovio's unfolding and differences are logged as warnings.
+
 Loading and writing
 -------------------
 

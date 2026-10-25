@@ -50,11 +50,25 @@ def convert_cmd(args):
 
 
 def extract_cmd(args):
+    if args.backend == "verovio":
+        from pymeasuremap.vrv import (
+            VEROVIO_INPUT_EXTENSIONS,
+            extract_directory_with_verovio,
+        )
+
+        extract_directory_with_verovio(
+            directory=args.dir,
+            output_directory=args.out,
+            file_regex=args.regex,
+            extensions=args.extensions or VEROVIO_INPUT_EXTENSIONS,
+            measure_map_extension=args.mm_extension,
+        )
+        return
     extract_directory(
         directory=args.dir,
         output_directory=args.out,
         file_regex=args.regex,
-        extensions=args.extensions,
+        extensions=args.extensions or get_m21_input_extensions(),
         measure_map_extension=args.mm_extension,
     )
 
@@ -171,11 +185,18 @@ The library offers you the following commands. Add the flag -h to one of them to
         parents=[default_args],
     )
     extract_parser.add_argument(
+        "-b",
+        "--backend",
+        choices=["music21", "verovio"],
+        default="music21",
+        help="Library used for parsing the scores. 'verovio' requires `pip install pyMeasureMap[verovio]` and "
+        "includes measure IDs. Defaults to 'music21'.",
+    )
+    extract_parser.add_argument(
         "-x",
         "--extensions",
         nargs="+",
-        default=get_m21_input_extensions(),
-        help="File extensions for which to extract MeasureMaps. Defaults to all extensions supported by music21.",
+        help="File extensions for which to extract MeasureMaps. Defaults to all extensions supported by the backend.",
     )
     extract_parser.add_argument(
         "--mm-extension",
