@@ -8,13 +8,13 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 
 from pymeasuremap import __version__
 
 __license__ = "CC BY-SA 4.0"
 
-from pymeasuremap.compare import one_comparison, run_corpus
+from pymeasuremap.compare import compare_pairs, one_comparison, run_corpus
 from pymeasuremap.convert import convert_directory
 from pymeasuremap.extract import extract_directory
 from pymeasuremap.utils import get_m21_input_extensions, resolve_dir
@@ -31,12 +31,62 @@ module_logger = logging.getLogger(__name__)
 
 def compare_cmd(args):
     print("Comparing MeasureMaps...")
+    if args.pairs is not None or args.other is not None:
+        layered_compare_cmd(args)
+        return
     if args.files is None:
         run_corpus(args.dir)
     else:
         for pref_path in args.files:
             other_path = pref_path.parent / "other_measure_map.json"
             one_comparison(pref_path, other_path)
+
+
+def read_pairs_file(
+    filepath: Path | str, directory: Path | str
+) -> List[Tuple[Path, Path]]:
+    """Reads a TSV or CSV file whose first two columns contain the paths of the preferred and the other MeasureMap.
+    Relative paths are resolved against the directory. A header row is detected by the absence of '.json'.
+    """
+    sep = "\t" if str(filepath).endswith(".tsv") else ","
+    pairs = []
+    with open(filepath, "r", encoding="utf-8") as f:
+        for i, line in enumerate(f):
+            cells = [c.strip() for c in line.rstrip("\n").split(sep)]
+            if len(cells) < 2 or not cells[0]:
+                continue
+            if i == 0 and not cells[0].endswith(".json"):
+                continue  # header
+            pairs.append(
+                tuple(
+                    Path(resolve_files_argument([c], directory)[0]) for c in cells[:2]
+                )
+            )
+    return pairs
+
+
+def layered_compare_cmd(args):
+    if args.pairs is not None:
+        pairs = read_pairs_file(args.pairs, args.dir)
+    else:
+        if not args.files:
+            raise ValueError(
+                "Pass the preferred MeasureMap(s) via -f when using --other."
+            )
+        others = resolve_files_argument(args.other, args.dir)
+        if len(others) == 1:
+            others = others * len(args.files)
+        if len(others) != len(args.files):
+            raise ValueError("Pass either one or as many --other files as -f files.")
+        pairs = list(zip(args.files, others))
+    summary, reports = compare_pairs(pairs, output_directory=args.out)
+    for report in reports:
+        if report is not None:
+            print(report.to_text())
+    if args.out is not None:
+        print(
+            f"Wrote the summary of {len(summary)} comparison(s) to {Path(args.out) / 'comparison_summary.tsv'}"
+        )
 
 
 def convert_cmd(args):
@@ -142,6 +192,20 @@ The library offers you the following commands. Add the flag -h to one of them to
         "compare",
         help="Compare MeasureMaps pertaining to the same music.",
         parents=[default_args],
+    )
+    compare_parser.add_argument(
+        "--other",
+        metavar="PATH",
+        nargs="+",
+        help="Perform a layered comparison of the MeasureMap(s) passed via -f (preferred) with the one(s) passed "
+        "here. Pass either one file or as many as via -f.",
+    )
+    compare_parser.add_argument(
+        "--pairs",
+        metavar="TSV",
+        help="Perform a layered comparison for each row of the given TSV/CSV file whose first two columns contain "
+        "the paths of a preferred and an other MeasureMap. With -o, writes comparison_summary.tsv plus a measure "
+        "table and a text report for each pair that is not identical.",
     )
     compare_parser.set_defaults(func=compare_cmd)
 

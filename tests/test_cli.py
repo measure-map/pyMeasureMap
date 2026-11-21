@@ -29,3 +29,28 @@ def test_compare_cmd_with_files(tmp_path, monkeypatch):
 def test_check_dir_with_missing_directory(tmp_path):
     with pytest.raises(argparse.ArgumentTypeError, match="needs to be an existing"):
         cli.check_dir(tmp_path / "missing")
+
+
+def test_compare_cmd_with_pairs_file(tmp_path):
+    from pymeasuremap.base import MeasureMap
+
+    for name, lengths in (("a.mm.json", [4.0, 4.0]), ("b.mm.json", [1.0, 3.0, 4.0])):
+        MeasureMap.from_array(
+            count=range(1, len(lengths) + 1), actual_length=lengths
+        ).to_json_file(tmp_path / name)
+    (tmp_path / "pairs.tsv").write_text("preferred\tother\na.mm.json\tb.mm.json\n")
+    out = tmp_path / "out"
+    out.mkdir()
+    args = cli.get_arg_parser().parse_args(
+        [
+            "compare",
+            "-d",
+            str(tmp_path),
+            "--pairs",
+            str(tmp_path / "pairs.tsv"),
+            "-o",
+            str(out),
+        ]
+    )
+    args.func(args)
+    assert (out / "comparison_summary.tsv").read_text().count("alignable") == 1
