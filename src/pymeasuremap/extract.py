@@ -23,7 +23,7 @@ def m21_part_to_measure_map(this_part: stream.Part) -> MeasureMap:
         "actual_length": int | float,  # expressed in quarterLength. Could also be as proportion
         "start_repeat": bool,
         "end_repeat": bool
-        "volta": int | None,
+        "volta": int | list of int | None,  # a list if the bracket stands for several passes, e.g. "1, 2"
         "next": list of int  # the counts of the measures that can follow
     """
 
@@ -63,7 +63,8 @@ def m21_part_to_measure_map(this_part: stream.Part) -> MeasureMap:
         volta = None
         for repeat_bracket in measure.getSpannerSites([spanner.RepeatBracket]):
             if repeat_bracket.numberRange:
-                volta = repeat_bracket.numberRange[0]
+                numbers = list(repeat_bracket.numberRange)
+                volta = numbers[0] if len(numbers) == 1 else numbers
 
         if end_repeat:
             next.append(go_back_to)

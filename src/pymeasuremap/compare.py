@@ -485,6 +485,9 @@ def _lengths_equal(a: Optional[float], b: Optional[float]) -> bool:
 
 
 def _values_equal(a, b) -> bool:
+    if isinstance(a, list) != isinstance(b, list):
+        # a single value and a list with this one value say the same thing, e.g. the voltas 1 and [1]
+        a, b = (a if isinstance(a, list) else [a]), (b if isinstance(b, list) else [b])
     if (
         isinstance(a, (int, float))
         and isinstance(b, (int, float))
@@ -522,8 +525,8 @@ def unfold(measure_map: MeasureMap, max_factor: int = 10) -> List[int]:
 
     If no measure specifies 'next', the play-through is inferred from 'start_repeat', 'end_repeat', and 'volta':
     every repeated section is played twice, and measures belonging to a volta are played only in the pass whose
-    number corresponds to the volta number. An end repeat without a start repeat goes back to the previous end
-    repeat or to the beginning.
+    number corresponds to the volta number, or to one of its numbers if 'volta' is a list. An end repeat without a
+    start repeat goes back to the previous end repeat or to the beginning.
 
     Limitations:
 
@@ -606,7 +609,7 @@ def unfold(measure_map: MeasureMap, max_factor: int = 10) -> List[int]:
             section_start = i
         if measure.volta is not None:
             in_voltas = True
-            if measure.volta != current_pass:
+            if current_pass not in measure.get_volta_numbers():
                 skipped_volta = True
                 i += 1
                 continue

@@ -142,6 +142,16 @@ def test_same_measures_with_number_offset():
     assert report.summary()["differing_fields"] == "number"
 
 
+def test_volta_as_number_or_list():
+    numbers = make_mm([4.0] * 4, volta=[None, 1, 2, None])
+    one_number_lists = make_mm([4.0] * 4, volta=[None, [1], [2], None])
+    assert compare_layered(numbers, one_number_lists).verdict == "identical"
+    shared_ending = make_mm([4.0] * 4, volta=[None, [1, 2], 3, None])
+    report = compare_layered(numbers, shared_ending)
+    assert report.verdict == "same_measures"
+    assert report.layers["fields"].details["mismatches"] == {"volta": [2, 3]}
+
+
 def test_qstamp_differences_explained_by_lengths_are_not_reported():
     report = compare_layered(make_mm([4.0, 4.0, 4.0]), make_mm([4.0, 3.0, 4.0]))
     assert report.verdict == "same_count_different_measures"
@@ -486,6 +496,28 @@ def test_unfold_three_endings():
         volta=[None, 1, 2, 3, None],
     )
     assert unfold(mm) == [1, 2, 1, 3, 1, 4, 5]
+
+
+def test_unfold_ending_shared_by_two_passes():
+    """|: 1 [1.-2. 2 :| [3. 3 | 4"""
+    mm = make_mm(
+        [4.0] * 4,
+        start_repeat=[True, False, False, False],
+        end_repeat=[False, True, False, False],
+        volta=[None, [1, 2], 3, None],
+    )
+    assert unfold(mm) == [1, 2, 1, 2, 1, 3, 4]
+
+
+def test_unfold_ending_for_first_and_third_pass():
+    """|: 1 [1., 3. 2 :| [2. 3 :| [4. 4 | 5"""
+    mm = make_mm(
+        [4.0] * 5,
+        start_repeat=[True, False, False, False, False],
+        end_repeat=[False, True, True, False, False],
+        volta=[None, [1, 3], 2, 4, None],
+    )
+    assert unfold(mm) == [1, 2, 1, 3, 1, 2, 1, 4, 5]
 
 
 def test_unfold_two_repeated_sections_with_endings():

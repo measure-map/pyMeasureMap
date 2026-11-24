@@ -50,8 +50,9 @@ class PMeasure(Protocol):
     """Typical usage is with the bool type, with 'true' indicating a start repeat at the beginning of the measure."""
     end_repeat: Optional[bool]
     """Typical usage is with the bool type, with 'true' indicating an end repeat at the end of the measure."""
-    volta: Optional[int]
-    """The number of the volta (ending) that this measure is part of, e.g. 1 for a first and 2 for a second ending."""
+    volta: Optional[int | list[int]]
+    """The number of the volta (ending) that this measure is part of, e.g. 1 for a first and 2 for a second ending,
+    or a list of numbers for an ending that is played in several passes, e.g. [1, 3] or [1, 2] for '1.-2.'."""
     next: Optional[list[int | str]]
     """All measures that can follow this one, each given by its 'ID' (a string) or by its 'count' (an integer). The
     corresponding field needs to be present in the MeasureMap. An empty list marks the end."""
@@ -99,7 +100,7 @@ class Measure(PMeasure):
     actual_length: Optional[Number] = None
     start_repeat: Optional[bool] = None
     end_repeat: Optional[bool] = None
-    volta: Optional[int] = None
+    volta: Optional[int | list[int]] = None
     next: Optional[list[int | str]] = None
 
     def __post_init__(self):
@@ -142,12 +143,29 @@ class Measure(PMeasure):
         if self.end_repeat is not None:
             self.end_repeat = bool(self.end_repeat)
         if self.volta is not None:
-            self.volta = int(self.volta)
+            if isinstance(self.volta, (str, bytes)) or not isinstance(
+                self.volta, Iterable
+            ):
+                self.volta = int(self.volta)
+                numbers = [self.volta]
+            else:
+                self.volta = numbers = [int(number) for number in self.volta]
             assert (
-                self.volta > 0
-            ), f"volta must be a positive integer, got {self.volta!r}"
+                numbers
+                and all(number > 0 for number in numbers)
+                and len(set(numbers)) == len(numbers)
+            ), f"volta must be a positive integer or a list of distinct positive integers, got {self.volta!r}"
         if self.next is not None:
             self.next = list(self.next)
+
+    def get_volta_numbers(self) -> tuple[int, ...]:
+        """Returns the numbers of the passes in which this measure is played as part of a volta: empty if 'volta' is
+        not specified, one number for an integer, and all numbers of a list."""
+        if self.volta is None:
+            return ()
+        if isinstance(self.volta, list):
+            return tuple(self.volta)
+        return (self.volta,)
 
     def as_dict(
         self,
@@ -357,7 +375,7 @@ class MeasureMap(PMeasureMap):
         actual_length: Optional[Iterable[Number]] = None,
         start_repeat: Optional[Iterable[bool]] = None,
         end_repeat: Optional[Iterable[bool]] = None,
-        volta: Optional[Iterable[int]] = None,
+        volta: Optional[Iterable[int | list[int] | None]] = None,
         next: Optional[Iterable[list[int]]] = None,
     ) -> MeasureMap:
         defined_arrays = {

@@ -41,6 +41,8 @@ length, and neither has one whose time signature is not a fraction.
 |------|-------|----------|-----|
 | `test_unfold_infers_repeats` | `\|: 1 2 :\| 3 4` | 1 2 1 2 3 4 | A repeated section is played twice. |
 | `test_unfold_infers_voltas` | `\|: 1 [1. 2 :\| [2. 3 \| 4` | 1 2 1 3 4 | The first ending is played in the first pass only, the second in the second. |
+| `test_unfold_ending_shared_by_two_passes` | `\|: 1 [1.-2. 2 :\| [3. 3 \| 4`, the first ending with `volta: [1, 2]` | 1 2 1 2 1 3 4 | An ending marked for the first and the second pass is played in both, and its end repeat is taken both times. Only the third pass reaches the third ending. |
+| `test_unfold_ending_for_first_and_third_pass` | `\|: 1 [1., 3. 2 :\| [2. 3 :\| [4. 4 \| 5`, with `volta` `[1, 3]`, `2`, `4` | 1 2 1 3 1 2 1 4 5 | The passes of an ending need not be consecutive: passes 1 and 3 take the first ending, pass 2 the second, pass 4 the last. |
 | `test_unfold_second_ending_of_two_measures` | `\|: 1 [1. 2 3 :\| [2. 4 5 \| 6` | 1 2 3 1 4 5 6 | Every measure of an ending belongs to its pass, not only the first one. |
 | `test_unfold_three_endings` | `\|: 1 [1. 2 :\| [2. 3 :\| [3. 4 \| 5` | 1 2 1 3 1 4 5 | Three endings mean three passes. |
 | `test_unfold_two_repeated_sections_with_endings` | `\|: 1 [1. 2 :\| [2. 3 \|: 4 [1. 5 :\| [2. 6 \| 7` | 1 2 1 3 4 5 4 6 7 | The pass counter starts anew for the second section. |
@@ -65,6 +67,7 @@ length, and neither has one whose time signature is not a fraction.
 |------|-------|----------|-----|
 | `test_identical` | twice `[1q, 4q, 3q]` | `identical`, unfolding skipped | Same maps; without repeats there is nothing to unfold. |
 | `test_same_measures_with_number_offset` | `[1q, 4q, 3q]` numbered 0–2 against 1–3 | `same_measures`, `number_offset` 1, only `number` differs | An anacrusis numbered 0 against consecutive numbering from 1: the measures are the same, the numbering is not. |
+| `test_volta_as_number_or_list` | four measures with `volta` `None, 1, 2, None` against `None, [1], [2], None`, then against `None, [1, 2], 3, None` | first pair `identical`; second pair `same_measures` with `volta` differing in counts 2 and 3 | `1` and `[1]` are two spellings of "first ending" and must not count as a difference. `[1, 2]` against `1` is a different statement about the passes; lengths are untouched, so the measures are the same. |
 | `test_qstamp_differences_explained_by_lengths_are_not_reported` | `[4, 4, 4]` against `[4, 3, 4]` | `same_count_different_measures`; only `actual_length` differs; the qstamp of measure 3 is listed as explained | Measure 3 starts at 8 against 7 only because measure 2 is one quarter shorter. Reporting the qstamp as well would count one difference twice. |
 | `test_same_when_unfolded` | `\|: 1 2 :\| 3 4` against six measures | `same_when_unfolded`, no alignment | 2 × 2 + 2 = 6 measures of 4q on both sides once the repeat is written out. |
 | `test_alignable_by_split` | `[1q, 3q, 4q]` against `[4q, 4q]` | `alignable`: split, match | 1q + 3q make up the first 4q measure. |
