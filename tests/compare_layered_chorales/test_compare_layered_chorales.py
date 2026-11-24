@@ -204,6 +204,20 @@ def test_different_B015_krn():
     assert "preferred 13 (2q) has no counterpart in other" in report.to_text()
 
 
+def test_compressed_map_is_identical_B015():
+    """A compressed measure map omits the entries that follow from their predecessors and describes the same
+    measures."""
+    measure_map = load("B015")
+    compressed = measure_map.compress()
+    assert len(measure_map.entries) == 22
+    assert len(compressed.entries) < 22
+    report = compare_layered(measure_map, compressed)
+    assert report.verdict == "identical"
+    assert report.layers["count"].details["n_other"] == 22
+    assert report.layers["fields"].details["undefined"] == ["volta"]
+    assert report.layers["fields"].details["differing"] == []
+
+
 # endregion 3. Layers in detail
 # region 3b. Unfolding from repeat signs alone
 
