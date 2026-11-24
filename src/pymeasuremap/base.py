@@ -52,8 +52,9 @@ class PMeasure(Protocol):
     """Typical usage is with the bool type, with 'true' indicating an end repeat at the end of the measure."""
     volta: Optional[int]
     """The number of the volta (ending) that this measure is part of, e.g. 1 for a first and 2 for a second ending."""
-    next: Optional[list[int]]
-    """A list of measure IDs that follow this measure."""
+    next: Optional[list[int | str]]
+    """All measures that can follow this one, each given by its 'ID' (a string) or by its 'count' (an integer). The
+    corresponding field needs to be present in the MeasureMap. An empty list marks the end."""
 
     def get_actual_length(self) -> float:
         """Returns the actual length of the measure in quarter notes, falling back to .get_nominal_length() if the
@@ -99,7 +100,7 @@ class Measure(PMeasure):
     start_repeat: Optional[bool] = None
     end_repeat: Optional[bool] = None
     volta: Optional[int] = None
-    next: Optional[list[int]] = None
+    next: Optional[list[int | str]] = None
 
     def __post_init__(self):
         if self.ID is None and self.count is None:

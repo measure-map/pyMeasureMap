@@ -24,7 +24,7 @@ def m21_part_to_measure_map(this_part: stream.Part) -> MeasureMap:
         "start_repeat": bool,
         "end_repeat": bool
         "volta": int | None,
-        "next": lst of str
+        "next": list of int  # the counts of the measures that can follow
     """
 
     sheet_measure_map = []

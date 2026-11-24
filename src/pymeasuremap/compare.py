@@ -516,8 +516,9 @@ def unfold(measure_map: MeasureMap, max_factor: int = 10) -> List[int]:
     """Returns the sequence of counts that corresponds to a play-through of the MeasureMap.
 
     The 'next' field is used if it is specified: When a measure is visited for the k-th time, the k-th element of its
-    'next' list is the successor (the last element if the list has fewer elements). Elements can be counts or IDs;
-    -1, None, or an empty list mark the end. Measures without 'next' continue with the following count.
+    'next' list is the successor (the last element if the list has fewer elements). As the MeasureMap specification
+    defines it, a string is the 'ID' of the successor and an integer its 'count'; -1, None, or an empty list mark
+    the end. Measures without 'next' continue with the following count.
 
     If no measure specifies 'next', the play-through is inferred from 'start_repeat', 'end_repeat', and 'volta':
     every repeated section is played twice, and measures belonging to a volta are played only in the pass whose
@@ -529,7 +530,7 @@ def unfold(measure_map: MeasureMap, max_factor: int = 10) -> List[int]:
     * As soon as one measure specifies 'next', the repeat signs and voltas are not interpreted anymore: measures
       without 'next' simply continue with the following count. A warning is logged if such a measure has a repeat
       sign or a volta, which is then ignored.
-    * Integers in 'next' are looked up as counts first and as IDs second.
+    * An integer in 'next' that is not the count of any measure is looked up among the IDs as a fallback.
     * Repeats within repeats are not supported by the inference from repeat signs, which follows one repeated
       section at a time: an inner start repeat replaces the outer one as the place to go back to, and the outer
       end repeat then goes back to the measure after the inner end repeat. '|: 1 |: 2 :| 3 :|' results in
