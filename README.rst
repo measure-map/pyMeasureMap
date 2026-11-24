@@ -173,7 +173,8 @@ On the command line (``MM compare -h`` prints the help)::
 other one in the second, separated by tabs or commas, with or without a header row. Relative paths are resolved
 against ``-d``. With ``-o``, the command writes ``comparison_summary.tsv`` (one row per pair with the verdict, the
 numbers of measures, the compared and the differing fields, and how often each operation occurs) and, for each
-pair that is not identical, ``<preferred>_vs_<other>.tsv`` (the measure table) and ``.txt`` (the report).
+pair that is not identical, ``<preferred>_vs_<other>.tsv`` (the measure table) and ``.txt`` (the report). A
+folder passed via ``-o`` that does not exist is created; when the command is run from a terminal, it asks first.
 
 Without ``--other`` and ``--pairs``, ``MM compare`` runs the older diagnosis: for each file called
 ``preferred_measure_map.json`` under ``-d`` (or each file passed via ``-f``) it looks for

@@ -85,20 +85,28 @@ def read_pairs_file(
 
 
 def layered_compare_cmd(args):
+    """Runs the layered comparison on the pairs given via --pairs or via -f and --other.
+
+    Wrong combinations of these arguments end the program like any other usage error (usage message, exit
+    status 2).
+
+    Raises:
+        ValueError: If the pairs file does not contain any pair.
+    """
     if args.pairs is not None:
         if args.files or args.other:
-            raise ValueError("Pass either --pairs or -f together with --other.")
+            args.parser.error("Pass either --pairs or -f together with --other.")
         pairs = read_pairs_file(args.pairs, args.dir)
     else:
         if not args.files:
-            raise ValueError(
+            args.parser.error(
                 "Pass the preferred MeasureMap(s) via -f when using --other."
             )
         others = resolve_files_argument(args.other, args.dir)
         if len(others) == 1:
             others = others * len(args.files)
         if len(others) != len(args.files):
-            raise ValueError("Pass either one or as many --other files as -f files.")
+            args.parser.error("Pass either one or as many --other files as -f files.")
         pairs = list(zip(args.files, others))
     summary, reports = compare_pairs(pairs, output_directory=args.out)
     for report in reports:
@@ -133,11 +141,16 @@ def extract_cmd(args):
 
 
 def check_and_create(d) -> Path:
-    """Turn input into an existing path, asking the user if they want to create it if it doesn't exist."""
+    """Turn input into an existing path. A directory that doesn't exist is created: after asking the user if
+    standard input is a terminal, without asking otherwise (e.g., when called from a script).
+    """
     if not os.path.isdir(d):
         d = resolve_dir(os.path.join(os.getcwd(), d))
         if not d.is_dir():
-            if input(f"{d} does not exist. Create? (y|n)") == "y":
+            if not sys.stdin.isatty():
+                d.mkdir(parents=True, exist_ok=True)
+                module_logger.info(f"Created the output directory {d}")
+            elif input(f"{d} does not exist. Create? (y|n)") == "y":
                 d.mkdir(parents=True, exist_ok=True)
             else:
                 raise argparse.ArgumentTypeError(
@@ -218,9 +231,9 @@ The library offers you the following commands. Add the flag -h to one of them to
 
 Layered comparison (with --other or --pairs): Compares a preferred MeasureMap with another one and reports whether
 they are identical, differ in numbering or repeats only, are the same when unfolded, can be aligned by joining and
-splitting measures, or are different, together with the measures concerned. Prints one report per pair; with -o,
-also writes comparison_summary.tsv plus a measure table (.tsv) and the report (.txt) for each pair that is not
-identical.
+splitting measures, or are different, together with the measures concerned. In this mode, -f names the preferred
+MeasureMap(s). Prints one report per pair; with -o, also writes comparison_summary.tsv plus a measure table (.tsv)
+and the report (.txt) for each pair that is not identical.
 
     MM compare -f preferred.mm.json --other other.mm.json
     MM compare -d corpus --pairs pairs.tsv -o reports
@@ -245,7 +258,7 @@ suggested modifications to other_modifications.txt next to it. -o is ignored in 
         "the paths of a preferred and an other MeasureMap (separated by tabs or commas, with or without a header "
         "row). Relative paths are resolved against -d. Cannot be combined with -f and --other.",
     )
-    compare_parser.set_defaults(func=compare_cmd)
+    compare_parser.set_defaults(func=compare_cmd, parser=compare_parser)
 
     convert_parser = subparsers.add_parser(
         "convert",
