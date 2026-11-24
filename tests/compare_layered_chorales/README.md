@@ -8,8 +8,9 @@ three Riemenschneider datasets in [aligned_bach_chorales](https://github.com/mea
 (notebook `code/05_align_389_chorale_settings.py`). In that notebook, the 389 are always the `preferred` side and a
 Riemenschneider dataset is the `other` side. The tests do the same.
 
-Five settings from the 389 are enough to produce every verdict, every alignment operation that occurs (match,
-split, join, insert, change_length), and the two known limitations.
+Five settings from the 389 are enough to produce every verdict that real pairs can have (`same_count` needs measure
+maps without any field in common and is tested in `tests/test_compare_layered.py`) and the alignment operations
+match, split, join, insert, change_length and change_time_signature.
 
 ## Fixtures
 
@@ -59,7 +60,7 @@ Two conventions explain most of the differences:
 
 The table lists one pair for each verdict, with a short reason in the column `case`. Only the alignable verdict has
 two pairs, one for a split and one for a join. `test_verdict` checks each row, `test_every_verdict_is_covered`
-makes sure that the table contains every value of `pymeasuremap.compare.VERDICTS`, and
+makes sure that the table contains every value of `pymeasuremap.compare.VERDICTS` except `same_count`, and
 `test_compare_pairs_reproduces_the_table` runs all rows through `compare_pairs()`. That last test checks the
 summary table and that it writes reports for every non-identical pair, and only for those.
 
@@ -74,6 +75,11 @@ The expected play-throughs can be read off the overview above:
 * `B205`: `1–9 :| 10–14 |: 15–19 :| 20–24` → 1–9, 1–19, 15–24 (38 measures). This checks that the split measures at
   the repeat signs (9+10, 14+15, 19+20) don't confuse the unfolding.
 
+All fixtures specify `next`, so the tests above follow it. `test_unfold_from_repeat_signs_agrees_with_next` removes
+`next` from every fixture and requires the same play-through, which then has to be inferred from the repeat signs
+alone. `next` is the stated truth here, and the fixtures include a `:|` without a matching `|:` (B015, B205) and
+measures split at repeat signs (B205).
+
 ### 3. Layers in detail
 
 | test | pair | what it makes sure | why the expected values are right |
@@ -82,22 +88,21 @@ The expected play-throughs can be read off the overview above:
 | `test_number_offsets_B015_cap` | B015 / cap_R359 | When only the numbering differs, the verdict is `same_measures` and the offset is reported as segments, here `+1 in 1–8, +2 in 9–22`. No single `number_offset` is reported, because the offset isn't constant, and `name` isn't reported because the names only mirror the numbers. | The anacrusis gives +1 from the start. The split measure 7 (counts 8/9) adds another +1 from count 9 onwards. |
 | `test_length_differences_B072_xml` | B072 / xml_R087 | Length differences are reported per measure. qstamp differences that follow from earlier length differences are filtered out (`qstamp_explained_by_lengths`), and the alignment names the two `change_length`s. | xml_R087 encodes measures 1 and 4 with 5 quarters, so every qstamp from count 2 onwards is shifted by 1q, and from count 5 by 2q. |
 | `test_written_out_repeat_B072_krn` | B072 / krn_R087 | Different measure counts (13 vs 16) that are the same once unfolded (22 each) give the verdict `same_when_unfolded`. The message says which side writes out the repeat, and no alignment is attempted. | See the unfolding tests above. |
-| `test_split_B006_krn` | B006 / krn_R253 | A measure that the 389 split into two counts that add up to one measure of the other side is a single `split`, not an insert plus a length change. | Count 11 (3q) + count 12 (1q) in B006 corresponds to krn count 11 (4q), and the total duration is 68q on both sides. |
+| `test_split_B006_krn` | B006 / krn_R253 | A measure that the 389 split into two counts that add up to one measure of the other side is a single `split`, not an insert plus a length change. Neither side has repeats, so the unfolding layer is skipped. | Count 11 (3q) + count 12 (1q) in B006 corresponds to krn count 11 (4q), and the total duration is 68q on both sides. |
 | `test_join_across_repeats_B205_krn` | B205 / krn_R327 | When the repeat structures differ, the unfolded sequences are aligned, and a `join` can bridge a repeat sign. | krn repeats 10–12 and 13–17, while B205 writes the first of these repeats out (10–14, 16q = 2 × (1+4+3)q) and repeats 15–19. Unfolded, krn has the 3q end of the repeated section (count 12) followed by the 1q pickup (count 10) where B205 has the full 4q count 12. |
 | `test_different_B015_krn` | B015 / krn_R359 | A real difference in content gives `different`, with an `insert` for the missing measure and a `change_length` for the last measure. | krn_R359 has no counterpart of B015's 2q measure (count 13), and its final measure has 4q instead of 3q. cap_R359, on the other hand, is `same_measures` with B015, so this difference belongs to the krn encoding. |
 
-### 4. Known limitations (`xfail(strict=True)`)
-
-These tests describe the behaviour we want. They are expected to fail for now, and because they are strict, the
-suite will report them once they start passing, so the marker can be removed.
+### 4. Time signatures and the measure table
 
 * `test_time_signature_mismatch_is_not_a_length_change_B329_krn`: B329 notates *Wachet auf* in 2/2 with twice as
-  many measures as krn_R179 (4/4). Every measure has 4q on both sides, but the alignment reports 16 `change_length`
-  steps ("4q ≠ 4q: different length") because the time signatures differ. A time-signature mismatch should get its
-  own operation, and ideally the doubled note values would be recognized.
-* `test_measure_table_covers_all_measures_B072_krn`: for `same_when_unfolded` there is no alignment, so
-  `ComparisonReport.measure_table()` pairs measures by position and silently drops the 3 extra krn measures. The
-  table should cover all measures of both sides, for example by following the unfolded sequences.
+  many measures as krn_R179 (4/4), and with doubled note values (144q against 68q). Where a measure of one is
+  paired with a measure of the other, both have 4q, so the difference has to be reported as
+  `change_time_signature` (16 times) and never as `change_length`. That the two encode the same music at
+  different note values is not recognized: the verdict stays `different`.
+* `test_measure_table_follows_the_play_throughs_B072_krn`: for `same_when_unfolded` there is no alignment, and
+  pairing the measures by position would drop the 3 measures that krn writes out. The table therefore follows the
+  two play-throughs (22 rows, see the unfolding tests above): krn counts 10–12 have to appear next to the second
+  pass of B072 counts 7–9, and no row may differ in length or time signature.
 
 ## Running
 

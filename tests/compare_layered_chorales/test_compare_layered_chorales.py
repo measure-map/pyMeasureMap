@@ -55,7 +55,9 @@ def test_verdict(row):
 def test_every_verdict_is_covered():
     from pymeasuremap.compare import VERDICTS
 
-    assert {row["verdict"] for row in EXPECTED} == set(VERDICTS)
+    # 'same_count' needs two measure maps without any field in common, which no real pair provides;
+    # it is tested with synthetic measure maps in tests/test_compare_layered.py
+    assert {row["verdict"] for row in EXPECTED} == set(VERDICTS) - {"same_count"}
 
 
 def test_compare_pairs_reproduces_the_table(tmp_path):
@@ -128,7 +130,10 @@ def test_number_offsets_B015_cap():
     assert fields.details["number_offsets"] == [(1, 8, 1), (9, 22, 2)]
     # not a constant offset, hence no single number_offset
     assert "number_offset" not in fields.details
-    assert fields.message == "measure numbers offset by +1 in 1–8, +2 in 9–22"
+    assert (
+        fields.message
+        == "measure numbers offset by +1 in 1–8, +2 in 9–22; not compared: volta"
+    )
     # names merely reflect the numbers and are therefore not reported
     assert "name" not in fields.details["differing"]
 
@@ -163,7 +168,9 @@ def test_written_out_repeat_B072_krn():
 def test_split_B006_krn():
     """B006 splits krn's measure 11 (4q) into counts 11 (3q) and 12 (1q)."""
     report = compare("B006", "krn_R253")
-    assert report.layers["unfolded"].status == "differs"
+    # neither side has repeats, so there is nothing to unfold
+    assert report.layers["unfolded"].status == "skipped"
+    assert report.alignment_basis == "folded"
     non_matches = [s for s in report.alignment if s.operation != "match"]
     assert len(non_matches) == 1
     step = non_matches[0]
@@ -198,28 +205,63 @@ def test_different_B015_krn():
 
 
 # endregion 3. Layers in detail
-# region 4. Known limitations (expected to fail until fixed)
+# region 3b. Unfolding from repeat signs alone
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Measures that have the same length but different time signatures are reported as 'change_length'.",
+@pytest.mark.parametrize(
+    "name", sorted(path.name[: -len(".mm.json")] for path in FIXTURES.glob("*.mm.json"))
 )
+def test_unfold_from_repeat_signs_agrees_with_next(name):
+    """All fixtures specify 'next'. Without it, unfold() has to infer the same play-through from the repeat signs."""
+    measure_map = load(name)
+    without_next = MeasureMap.from_dicts(
+        [
+            {key: value for key, value in vars(measure).items() if key != "next"}
+            for measure in measure_map
+        ]
+    )
+    assert all(measure.next is None for measure in without_next)
+    assert unfold(without_next) == unfold(measure_map)
+
+
+# endregion 3b. Unfolding from repeat signs alone
+
+
+# region 4. Time signatures and the measure table
+
+
 def test_time_signature_mismatch_is_not_a_length_change_B329_krn():
+    """Where the 389 (2/2) and krn (4/4) measures are paired, both have 4q: the difference is one of time
+    signature, not of length."""
     report = compare("B329", "krn_R179")
-    for step in report.alignment:
-        if step.operation == "change_length":
-            assert step.preferred_lengths != step.other_lengths
+    assert report.verdict == "different"
+    summary = report.summary()
+    assert summary["n_change_length"] == 0
+    assert summary["n_change_time_signature"] == 16
+    assert summary["n_insert"] == 19
+    assert summary["n_join"] == 1
+    assert (
+        "preferred 1 (2/2) ≠ other 1 (4/4): different time signature"
+        in report.to_text()
+    )
+    assert "different length" not in report.to_text()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Without an alignment, measure_table() pairs measures by position and drops the surplus measures.",
-)
-def test_measure_table_covers_all_measures_B072_krn():
+def test_measure_table_follows_the_play_throughs_B072_krn():
+    """For 'same_when_unfolded' the table has one row per measure of the play-through (22), so that the three
+    measures krn writes out (counts 10-12) are paired with the repeated counts 7-9 of the 389.
+    """
     report = compare("B072", "krn_R087")
     table = report.measure_table()
-    assert len(table) >= 16
+    assert table.preferred_count.tolist() == [str(c) for c in unfold(load("B072"))]
+    assert table.other_count.tolist() == [str(c) for c in unfold(load("krn_R087"))]
+    assert len(table) == 22
+    assert table.operation.unique().tolist() == ["match"]
+    assert set(table.other_count) == {str(c) for c in range(1, 17)}
+    written_out = table[table.other_count.isin(["10", "11", "12"])]
+    assert written_out.preferred_count.tolist() == ["7", "8", "9"]
+    # lengths and time signatures agree in every row
+    assert not table.differing.str.contains("actual_length|time_signature").any()
 
 
-# endregion 4. Known limitations
+# endregion 4. Time signatures and the measure table

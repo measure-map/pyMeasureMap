@@ -4,6 +4,7 @@ All commands accessible by typing ``MM`` after pip-installing this package.
 """
 
 import argparse
+import csv
 import logging
 import os
 import sys
@@ -32,7 +33,10 @@ module_logger = logging.getLogger(__name__)
 def compare_cmd(args):
     print("Comparing MeasureMaps...")
     if args.pairs is not None or args.other is not None:
-        layered_compare_cmd(args)
+        try:
+            layered_compare_cmd(args)
+        except ValueError as e:
+            sys.exit(f"MM compare: error: {e}")
         return
     if args.files is None:
         run_corpus(args.dir)
@@ -46,27 +50,44 @@ def read_pairs_file(
     filepath: Path | str, directory: Path | str
 ) -> List[Tuple[Path, Path]]:
     """Reads a TSV or CSV file whose first two columns contain the paths of the preferred and the other MeasureMap.
-    Relative paths are resolved against the directory. A header row is detected by the absence of '.json'.
+
+    * The columns are separated by tabs if the first line contains one, otherwise by commas. Cells may be quoted.
+    * Relative paths are resolved against the directory (not against the location of the pairs file).
+    * The first row is skipped as a header if its first cell is neither an existing file nor ends on '.json'.
+    * Rows with fewer than two filled cells are skipped.
+
+    Raises:
+        ValueError: If the file does not contain any pair.
     """
-    sep = "\t" if str(filepath).endswith(".tsv") else ","
+    with open(filepath, "r", encoding="utf-8-sig", newline="") as f:
+        first_line = f.readline()
+        f.seek(0)
+        delimiter = "\t" if "\t" in first_line else ","
+        rows = [
+            [cell.strip() for cell in row] for row in csv.reader(f, delimiter=delimiter)
+        ]
     pairs = []
-    with open(filepath, "r", encoding="utf-8") as f:
-        for i, line in enumerate(f):
-            cells = [c.strip() for c in line.rstrip("\n").split(sep)]
-            if len(cells) < 2 or not cells[0]:
-                continue
-            if i == 0 and not cells[0].endswith(".json"):
-                continue  # header
-            pairs.append(
-                tuple(
-                    Path(resolve_files_argument([c], directory)[0]) for c in cells[:2]
-                )
-            )
+    for i, row in enumerate(rows):
+        if len(row) < 2 or not row[0] or not row[1]:
+            continue
+        preferred, other = resolve_files_argument(row[:2], directory)
+        is_header = (
+            i == 0 and not preferred.is_file() and not row[0].lower().endswith(".json")
+        )
+        if not is_header:
+            pairs.append((preferred, other))
+    if not pairs:
+        raise ValueError(
+            f"{filepath} does not contain any pair of MeasureMap paths. Expected two columns separated by tabs "
+            f"or commas."
+        )
     return pairs
 
 
 def layered_compare_cmd(args):
     if args.pairs is not None:
+        if args.files or args.other:
+            raise ValueError("Pass either --pairs or -f together with --other.")
         pairs = read_pairs_file(args.pairs, args.dir)
     else:
         if not args.files:
@@ -83,6 +104,8 @@ def layered_compare_cmd(args):
     for report in reports:
         if report is not None:
             print(report.to_text())
+    for row in summary[summary.verdict == "error"].itertuples():
+        print(f"{row.preferred} vs. {row.other}: ERROR {row.message}")
     if args.out is not None:
         print(
             f"Wrote the summary of {len(summary)} comparison(s) to {Path(args.out) / 'comparison_summary.tsv'}"
@@ -191,6 +214,21 @@ The library offers you the following commands. Add the flag -h to one of them to
     compare_parser = subparsers.add_parser(
         "compare",
         help="Compare MeasureMaps pertaining to the same music.",
+        description="""Compare MeasureMaps pertaining to the same music. There are two modes:
+
+Layered comparison (with --other or --pairs): Compares a preferred MeasureMap with another one and reports whether
+they are identical, differ in numbering or repeats only, are the same when unfolded, can be aligned by joining and
+splitting measures, or are different, together with the measures concerned. Prints one report per pair; with -o,
+also writes comparison_summary.tsv plus a measure table (.tsv) and the report (.txt) for each pair that is not
+identical.
+
+    MM compare -f preferred.mm.json --other other.mm.json
+    MM compare -d corpus --pairs pairs.tsv -o reports
+
+Diagnosis (without --other and --pairs): For each preferred MeasureMap, i.e. each file passed via -f or each file
+called preferred_measure_map.json under -d, looks for other_measure_map.json in the same folder and writes the
+suggested modifications to other_modifications.txt next to it. -o is ignored in this mode.""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
         parents=[default_args],
     )
     compare_parser.add_argument(
@@ -198,14 +236,14 @@ The library offers you the following commands. Add the flag -h to one of them to
         metavar="PATH",
         nargs="+",
         help="Perform a layered comparison of the MeasureMap(s) passed via -f (preferred) with the one(s) passed "
-        "here. Pass either one file or as many as via -f.",
+        "here. Pass either one file or as many as via -f. Relative paths are resolved against -d.",
     )
     compare_parser.add_argument(
         "--pairs",
         metavar="TSV",
         help="Perform a layered comparison for each row of the given TSV/CSV file whose first two columns contain "
-        "the paths of a preferred and an other MeasureMap. With -o, writes comparison_summary.tsv plus a measure "
-        "table and a text report for each pair that is not identical.",
+        "the paths of a preferred and an other MeasureMap (separated by tabs or commas, with or without a header "
+        "row). Relative paths are resolved against -d. Cannot be combined with -f and --other.",
     )
     compare_parser.set_defaults(func=compare_cmd)
 
