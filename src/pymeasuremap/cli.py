@@ -37,6 +37,9 @@ def compare_cmd(args):
             layered_compare_cmd(args)
         except ValueError as e:
             sys.exit(f"MM compare: error: {e}")
+        except OSError as e:
+            path = args.pairs if e.filename is None else e.filename
+            sys.exit(f"MM compare: error: {path}: {e.strerror}")
         return
     if args.files is None:
         run_corpus(args.dir)
@@ -142,20 +145,29 @@ def extract_cmd(args):
 
 def check_and_create(d) -> Path:
     """Turn input into an existing path. A directory that doesn't exist is created: after asking the user if
-    standard input is a terminal, without asking otherwise (e.g., when called from a script).
+    standard input is a terminal, without asking otherwise (e.g., when called from a script or without standard
+    input).
+
+    Raises:
+        argparse.ArgumentTypeError:
+            If the path is a file, if the directory cannot be created, or if the user declines to create it.
     """
     if not os.path.isdir(d):
+        if os.path.isfile(d):
+            raise argparse.ArgumentTypeError(f"{d} is a file, not a directory.")
         d = resolve_dir(os.path.join(os.getcwd(), d))
         if not d.is_dir():
-            if not sys.stdin.isatty():
-                d.mkdir(parents=True, exist_ok=True)
-                module_logger.info(f"Created the output directory {d}")
-            elif input(f"{d} does not exist. Create? (y|n)") == "y":
-                d.mkdir(parents=True, exist_ok=True)
-            else:
+            ask = sys.stdin is not None and sys.stdin.isatty()
+            if ask and input(f"{d} does not exist. Create? (y|n)") != "y":
                 raise argparse.ArgumentTypeError(
                     f"{d} needs to be an existing directory."
                 )
+            try:
+                d.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                raise argparse.ArgumentTypeError(f"{d} cannot be created: {e.strerror}")
+            if not ask:
+                module_logger.info(f"Created the output directory {d}")
     return resolve_dir(d)
 
 

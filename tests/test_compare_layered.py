@@ -771,14 +771,36 @@ def test_compare_pairs_numbers_colliding_report_files(tmp_path):
     assert "4q" in (tmp_path / "x_vs_y.txt").read_text(encoding="utf-8")
 
 
-def test_compare_pairs_names_and_errors(tmp_path):
+def test_compare_pairs_names_and_errors(tmp_path, caplog):
     a = make_mm([4.0, 4.0])
     with pytest.raises(ValueError, match="1 names for 2 pairs"):
         compare_pairs([(a, a), (a, a)], names=[("a", "b")])
-    summary, reports = compare_pairs([(a, a), (tmp_path / "missing.mm.json", a)])
+    missing = tmp_path / "missing.mm.json"
+    with caplog.at_level("DEBUG", logger="pymeasuremap.compare"):
+        summary, reports = compare_pairs([(a, a), (missing, a)])
     assert summary.preferred.tolist() == ["preferred_1", "missing.mm.json"]
     assert summary.verdict.tolist() == ["identical", "error"]
     assert reports[1] is None
+    message = (
+        f"FileNotFoundError: [Errno 2] No such file or directory: {str(missing)!r}"
+    )
+    assert summary.message[1] == message
+    assert [
+        (record.levelname, record.getMessage(), record.exc_info is not None)
+        for record in caplog.records
+        if record.name == "pymeasuremap.compare"
+    ] == [
+        (
+            "WARNING",
+            f"Comparing missing.mm.json with other_2 failed: {message}",
+            False,
+        ),
+        (
+            "DEBUG",
+            "Traceback of the failed comparison of missing.mm.json with other_2:",
+            True,
+        ),
+    ]
 
 
 def test_compare_pairs_continues_when_a_report_cannot_be_written(tmp_path):

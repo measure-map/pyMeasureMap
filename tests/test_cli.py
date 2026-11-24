@@ -3,7 +3,9 @@ README_cli_compare.md."""
 
 import argparse
 import csv
+import errno
 import logging
+import os
 import sys
 
 import pytest
@@ -173,8 +175,11 @@ def test_compare_cmd_with_pairs_file_naming_a_missing_file(
         ("a.mm.json", "b.mm.json", "alignable"),
         ("a.mm.json", "missing.mm.json", "error"),
     ]
-    message = summary[1]["message"]
-    assert message != ""
+    message = (
+        "FileNotFoundError: [Errno 2] No such file or directory: "
+        f"{str(tmp_path / 'missing.mm.json')!r}"
+    )
+    assert summary[1]["message"] == message
     assert unindented_lines(capsys.readouterr().out) == [
         "Comparing MeasureMaps...",
         "a.mm.json (preferred) vs. b.mm.json (other): ALIGNABLE",
@@ -316,6 +321,25 @@ def test_compare_cmd_with_pairs_file_without_pairs(tmp_path, monkeypatch, capsys
     assert capsys.readouterr().out == "Comparing MeasureMaps...\n"
 
 
+def test_compare_cmd_with_missing_pairs_file(tmp_path, monkeypatch, capsys):
+    pairs_file = tmp_path / "missing.tsv"
+    with pytest.raises(SystemExit) as exc_info:
+        run_mm(monkeypatch, "compare", "-d", tmp_path, "--pairs", pairs_file)
+    assert exc_info.value.code == (
+        f"MM compare: error: {pairs_file}: {os.strerror(errno.ENOENT)}"
+    )
+    assert capsys.readouterr().out == "Comparing MeasureMaps...\n"
+
+
+def test_compare_cmd_with_folder_as_pairs_file(tmp_path, monkeypatch, capsys):
+    with pytest.raises(SystemExit) as exc_info:
+        run_mm(monkeypatch, "compare", "-d", tmp_path, "--pairs", tmp_path)
+    assert exc_info.value.code == (
+        f"MM compare: error: {tmp_path}: {os.strerror(errno.EISDIR)}"
+    )
+    assert capsys.readouterr().out == "Comparing MeasureMaps...\n"
+
+
 # endregion errors
 # region folders
 
@@ -368,6 +392,55 @@ def test_check_and_create_with_existing_directory(tmp_path, monkeypatch, is_term
     monkeypatch.setattr(sys, "stdin", FakeStdin(is_terminal=is_terminal))
     monkeypatch.setattr("builtins.input", refuse_to_answer)
     assert cli.check_and_create(str(tmp_path)) == tmp_path
+
+
+def test_check_and_create_without_standard_input(tmp_path, monkeypatch, caplog):
+    missing = tmp_path / "missing" / "nested"
+    monkeypatch.setattr(sys, "stdin", None)
+    monkeypatch.setattr("builtins.input", refuse_to_answer)
+    with caplog.at_level(logging.INFO, logger="pymeasuremap.cli"):
+        assert cli.check_and_create(str(missing)) == missing
+    assert missing.is_dir()
+    assert [(record.levelname, record.getMessage()) for record in caplog.records] == [
+        ("INFO", f"Created the output directory {missing}")
+    ]
+
+
+def test_output_folder_that_is_a_file(tmp_path, monkeypatch, capsys):
+    a_file = tmp_path / "a_file"
+    a_file.write_text("content", encoding="utf-8")
+    monkeypatch.setattr(sys, "stdin", FakeStdin(is_terminal=False))
+    monkeypatch.setattr("builtins.input", refuse_to_answer)
+    with pytest.raises(SystemExit) as exc_info:
+        run_mm(monkeypatch, "compare", "-d", tmp_path, "--pairs", "p.tsv", "-o", a_file)
+    assert exc_info.value.code == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.startswith("usage: MM compare [-h] ")
+    assert captured.err.splitlines()[-1] == (
+        f"MM compare: error: argument -o/--out: {a_file} is a file, not a directory."
+    )
+    assert a_file.read_text(encoding="utf-8") == "content"
+
+
+def test_output_folder_under_a_file(tmp_path, monkeypatch, capsys):
+    a_file = tmp_path / "a_file"
+    a_file.write_text("content", encoding="utf-8")
+    out = a_file / "sub"
+    with pytest.raises(OSError) as error:
+        out.mkdir(parents=True)
+    monkeypatch.setattr(sys, "stdin", FakeStdin(is_terminal=False))
+    monkeypatch.setattr("builtins.input", refuse_to_answer)
+    with pytest.raises(SystemExit) as exc_info:
+        run_mm(monkeypatch, "compare", "-d", tmp_path, "--pairs", "p.tsv", "-o", out)
+    assert exc_info.value.code == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.startswith("usage: MM compare [-h] ")
+    assert captured.err.splitlines()[-1] == (
+        f"MM compare: error: argument -o/--out: {out} cannot be created: {error.value.strerror}"
+    )
+    assert a_file.read_text(encoding="utf-8") == "content"
 
 
 # endregion folders

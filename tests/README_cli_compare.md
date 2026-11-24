@@ -56,9 +56,12 @@ reasoning; a test that does not is wrong, even if it passes.
   pairs. The run must complete without an exception; the summary must have the verdicts `alignable`, `error`; no
   report file may be written for the failed pair; and the command must print one line
   `a.mm.json vs. missing.mm.json: ERROR <message>`, where `<message>` is what the summary holds in the column
-  `message` for that row. The test reads it from the summary and requires it to be non-empty: the wording of the
-  failure belongs to the comparison, what the command owes is that it prints exactly that and for exactly that
-  pair.
+  `message` for that row. That message must be the type of the error followed by the text of the operating
+  system, which ends with the full path of the missing file:
+  `FileNotFoundError: [Errno 2] No such file or directory: '<-d>/missing.mm.json'`. The user has to see which
+  file is missing, and in a run over many pairs the two names of the pair do not say where the file was looked
+  for. The command prints no traceback for such a pair: the comparison logs one warning line, and the traceback
+  at debug level only, which is tested with the comparison (`test_compare_pairs_names_and_errors`).
 * **Relative paths resolve against `-d`**: the pairs file lies in another folder than the one given via `-d`, and
   its only row is `a, b`. Under `-d`, `a` and `b` are the maps described above (`alignable`). The folder of the
   pairs file contains decoys of the same names with equal content, which would be `identical`. The printed first
@@ -92,7 +95,14 @@ There are two kinds, and they leave the program differently.
   stream.
 * **Unusable content of the pairs file**: a pairs file without any pair is not a mistake in the call. The
   command must end with exit status 1 and the message `MM compare: error: <reason given by read_pairs_file>`,
-  without a traceback, i.e. as a `SystemExit` carrying exactly that message.
+  without a traceback, i.e. as a `SystemExit` carrying exactly that message (the interpreter prints the message
+  of such an exit on the error stream and ends with status 1).
+* **Unreadable pairs file**: the same holds when the pairs file cannot be opened. Two cases are tested, a path
+  at which nothing exists and a path that is a folder. Both must end as a `SystemExit` carrying
+  `MM compare: error: <path>: <reason>`, where `<path>` is the path as it was passed to `--pairs` and `<reason>`
+  is the text the operating system has for the failure (`No such file or directory`, `Is a directory`). The
+  test takes that text from the operating system by its error number, because the wording belongs to the
+  platform; what the command owes is that it names the path and the reason on one line and nothing else.
 
 ## Folders
 
@@ -109,6 +119,21 @@ There are two kinds, and they leave the program differently.
   * *terminal, answer `n`*: the same question, then `argparse.ArgumentTypeError` with the message
     `<folder> needs to be an existing directory.`, and the folder must still not exist.
   * *existing folder*: returned as it is, without a question, whatever standard input is.
+  * *no standard input at all*: some job runners start a program with standard input closed, and Python then
+    sets `sys.stdin` to `None`. This is one more case of "nobody can answer": with `sys.stdin` replaced by
+    `None`, the outcome must be exactly that of *not a terminal* (folder created, path returned, no question,
+    the one info message).
+* **`-o` that cannot be a folder**. Both cases are mistakes in the call, so they must end like any other one:
+  exit status 2, and on the error stream the usage line followed by a last line
+  `MM compare: error: argument -o/--out: <reason>`. They are run through the command line, because the point is
+  what the argument parser prints: it shows the reason only if the function raises
+  `argparse.ArgumentTypeError`, and replaces any other error by a remark that the value is invalid, or lets it
+  through as a traceback. Standard input is not a terminal in both cases, and asking raises in the test.
+  * *the path is an existing file*: the reason must be `<path> is a file, not a directory.`, and the file must
+    be left as it was.
+  * *the path lies under an existing file* (`<file>/sub`): the folder cannot be created. The reason must be
+    `<path> cannot be created: <text of the operating system>`; the test takes that text from the operating
+    system by provoking the same failure itself, because error and wording differ between platforms.
   * *end to end*: the `--pairs` run described under "Output files" is given an output folder that does not exist
     while standard input is not a terminal; that it finds its three files there proves that the command as a
     whole runs unattended.

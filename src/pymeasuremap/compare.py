@@ -923,7 +923,7 @@ class ComparisonReport:
         * differing_fields: the compared fields with at least one difference
         * number_offset: the difference other.number - preferred.number if it is the same for all measures
         * n_preferred_unfolded, n_other_unfolded: numbers of measures of the play-throughs (None if not computed)
-        * n_join, n_split, n_change_length, n_change_time_signature, n_insert, n_delete: how often each operation
+        * n_change_length, n_change_time_signature, n_join, n_split, n_insert, n_delete: how often each operation
           occurs in the alignment (None if no alignment was computed)
         * message: the messages of all layers
         """
@@ -1439,7 +1439,8 @@ def compare_pairs(
     Returns:
         A summary table with one row per pair (see :meth:`ComparisonReport.summary`) and the list of reports. A
         pair that could not be compared (e.g., because a file is missing or invalid) has the verdict 'error', the
-        error in the column 'message', and None in the place of its report. If a file could not be written for a
+        type and the text of the error in the column 'message', and None in the place of its report; a warning is
+        logged, and the traceback at debug level. If a file could not be written for a
         pair, the column 'output_error' says why.
 
     Raises:
@@ -1458,11 +1459,14 @@ def compare_pairs(
                 preferred, other, preferred_name=p_name, other_name=o_name, **kwargs
             )
         except Exception as e:
-            module_logger.warning(
-                f"Comparing {p_name} with {o_name} failed: {e!r}", exc_info=True
+            message = f"{type(e).__name__}: {e}"
+            module_logger.warning(f"Comparing {p_name} with {o_name} failed: {message}")
+            module_logger.debug(
+                f"Traceback of the failed comparison of {p_name} with {o_name}:",
+                exc_info=True,
             )
             rows.append(
-                dict(preferred=p_name, other=o_name, verdict="error", message=repr(e))
+                dict(preferred=p_name, other=o_name, verdict="error", message=message)
             )
             reports.append(None)
             continue
