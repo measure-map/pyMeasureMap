@@ -6,7 +6,17 @@ import re
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Dict,
+    Iterable,
+    List,
+    Literal,
+    NamedTuple,
+    Optional,
+    Sequence,
+    Tuple,
+)
 
 from pymeasuremap.base import MeasureMap
 
@@ -440,6 +450,31 @@ OPERATIONS = (
 * delete: an other measure has no counterpart and would need to be deleted.
 """
 
+Verdict = Literal[
+    "identical",
+    "same_count",
+    "same_measures",
+    "same_count_different_measures",
+    "same_when_unfolded",
+    "alignable",
+    "different",
+]
+"""The values of VERDICTS as a type."""
+
+Operation = Literal[
+    "match",
+    "change_length",
+    "change_time_signature",
+    "join",
+    "split",
+    "insert",
+    "delete",
+]
+"""The values of OPERATIONS as a type."""
+
+LayerStatus = Literal["same", "differs", "skipped"]
+"""What a layer of the layered comparison found, or that it was not computed."""
+
 _EPSILON = 1e-6
 
 
@@ -460,9 +495,10 @@ def _values_equal(a, b) -> bool:
 
 
 def _actual_length(measure) -> Optional[float]:
+    """The length of the measure in quarter notes, or None if the measure does not define one."""
     try:
         return measure.get_actual_length()
-    except Exception:
+    except ValueError:
         return None
 
 
@@ -491,10 +527,14 @@ def unfold(measure_map: MeasureMap, max_factor: int = 10) -> List[int]:
     Limitations:
 
     * As soon as one measure specifies 'next', the repeat signs and voltas are not interpreted anymore: measures
-      without 'next' simply continue with the following count.
+      without 'next' simply continue with the following count. A warning is logged if such a measure has a repeat
+      sign or a volta, which is then ignored.
     * Integers in 'next' are looked up as counts first and as IDs second.
-    * Repeats within repeats are not supported by the inference from repeat signs, and neither are jumps such as
-      da capo or dal segno, which a MeasureMap can express through 'next' only.
+    * Repeats within repeats are not supported by the inference from repeat signs, which follows one repeated
+      section at a time: an inner start repeat replaces the outer one as the place to go back to, and the outer
+      end repeat then goes back to the measure after the inner end repeat. '|: 1 |: 2 :| 3 :|' results in
+      1 2 2 3 3 and not in 1 2 2 3 1 2 2 3. Jumps such as da capo or dal segno are not supported either. A
+      MeasureMap can express both through 'next' only.
     * The play-through is cut off after max_factor times the number of measures, with a warning.
     """
     measures = list(_prepare(measure_map))
@@ -504,6 +544,17 @@ def unfold(measure_map: MeasureMap, max_factor: int = 10) -> List[int]:
     by_id = {m.ID: i for i, m in enumerate(measures) if m.ID is not None}
     max_length = max_factor * len(measures)
     if any(m.next for m in measures):
+        ignored = [
+            m.count
+            for m in measures
+            if m.next is None
+            and (m.start_repeat or m.end_repeat or m.volta is not None)
+        ]
+        if ignored:
+            module_logger.warning(
+                f"Some measures specify 'next', so the play-through follows 'next' only: the repeat signs and "
+                f"voltas of the measures without 'next' are ignored (counts {_describe_mismatches(ignored)})."
+            )
 
         def resolve(target) -> Optional[int]:
             if target is None or target == -1:
@@ -578,28 +629,50 @@ def unfold(measure_map: MeasureMap, max_factor: int = 10) -> List[int]:
     return sequence
 
 
-def _same_measure(p: tuple, o: tuple) -> bool:
-    """Whether two (count, actual_length, time_signature, ...) items describe the same measure. Lengths and time
-    signatures are compared only where both sides define them: a measure without a length (e.g., from a source
-    that only enumerates measures) is not different from one that has a length.
+class _Item(NamedTuple):
+    """What the alignment needs to know about one measure."""
+
+    count: int
+    length: Optional[float]
+    """The actual length in quarter notes, None if the measure does not define one."""
+    time_signature: Optional[str]
+    number: Optional[int] = None
+
+
+def _same_measure(p: _Item, o: _Item) -> bool:
+    """Whether two items describe the same measure. Lengths and time signatures are compared only where both sides
+    define them: a measure without a length (e.g., from a source that only enumerates measures) is not different
+    from one that has a length.
     """
-    if p[1] is not None and o[1] is not None and not _lengths_equal(p[1], o[1]):
+    if (
+        p.length is not None
+        and o.length is not None
+        and not _lengths_equal(p.length, o.length)
+    ):
         return False
-    return p[2] is None or o[2] is None or p[2] == o[2]
+    return (
+        p.time_signature is None
+        or o.time_signature is None
+        or p.time_signature == o.time_signature
+    )
 
 
-def _change_operation(p: tuple, o: tuple) -> str:
+def _change_operation(p: _Item, o: _Item) -> Operation:
     """Names the operation for two paired items that are not the same measure."""
-    if p[1] is not None and o[1] is not None and not _lengths_equal(p[1], o[1]):
+    if (
+        p.length is not None
+        and o.length is not None
+        and not _lengths_equal(p.length, o.length)
+    ):
         return "change_length"
     return "change_time_signature"
 
 
-def _numbers_differ(p: tuple, o: tuple) -> bool:
-    """Whether both items carry a measure number (fourth element) and the two numbers are different."""
-    if len(p) < 4 or len(o) < 4:
-        return False
-    return p[3] is not None and o[3] is not None and p[3] != o[3]
+def _numbers_differ(p: _Item, o: _Item, offset: int = 0) -> bool:
+    """Whether both items carry a measure number and other.number - preferred.number is not the given offset."""
+    return (
+        p.number is not None and o.number is not None and o.number - p.number != offset
+    )
 
 
 @dataclass
@@ -607,7 +680,7 @@ class LayerResult:
     """Result of one layer of a layered comparison."""
 
     name: str
-    status: str
+    status: LayerStatus
     """'same', 'differs', or 'skipped'."""
     message: str = ""
     details: dict = dataclass_field(default_factory=dict)
@@ -617,7 +690,7 @@ class LayerResult:
 class AlignmentStep:
     """One step of aligning the 'other' measure sequence with the 'preferred' one."""
 
-    operation: str
+    operation: Operation
     """One of OPERATIONS (from the point of view of 'other')."""
     preferred: Tuple[int, ...]
     """Counts of the involved preferred measures (empty for 'delete')."""
@@ -631,7 +704,9 @@ class AlignmentStep:
     def describe(self) -> str:
         def length(lengths) -> str:
             # measures without a defined length are described by their count only
-            return f" ({lengths[0]:g}q)" if lengths and lengths[0] is not None else ""
+            if not lengths or None in lengths:
+                return ""
+            return f" ({'+'.join(f'{value:g}q' for value in lengths)})"
 
         p = "+".join(str(c) for c in self.preferred)
         o = "+".join(str(c) for c in self.other)
@@ -648,9 +723,15 @@ class AlignmentStep:
                 f"({self.other_time_signatures[0]}): different time signature"
             )
         if self.operation == "join":
-            return f"other {o} would need to be joined to correspond to preferred {p}"
+            return (
+                f"other {o}{length(self.other_lengths)} would need to be joined to correspond to preferred "
+                f"{p}{length(self.preferred_lengths)}"
+            )
         if self.operation == "split":
-            return f"other {o} would need to be split to correspond to preferred {p}"
+            return (
+                f"other {o}{length(self.other_lengths)} would need to be split to correspond to preferred "
+                f"{p}{length(self.preferred_lengths)}"
+            )
         if self.operation == "insert":
             return f"preferred {p}{length(self.preferred_lengths)} has no counterpart in other"
         if self.operation == "delete":
@@ -660,30 +741,32 @@ class AlignmentStep:
         return f"{self.operation}: preferred {p}, other {o}"
 
 
-def align_measure_sequences(
-    preferred: Sequence[tuple],
-    other: Sequence[tuple],
-    gap_cost: float = 1.0,
-    change_cost: float = 1.0,
-    join_split_cost: float = 0.5,
-) -> List[AlignmentStep]:
-    """Aligns two sequences of (count, actual_length, time_signature) or (count, actual_length, time_signature,
-    number) tuples with an edit distance that, besides matches, changes of length or time signature, insertions and
-    deletions, allows for joining two 'other' measures or splitting one 'other' measure when their lengths add up.
-    See OPERATIONS.
+def _number_offsets(preferred: Sequence[_Item], other: Sequence[_Item]) -> List[int]:
+    """The offsets other.number - preferred.number that an alignment is tried with: 0, the offset of the first items
+    and the offset of the last items, without duplicates. An offset is left out if one of the two numbers is missing.
+    """
+    offsets = [0]
+    if preferred and other:
+        for p, o in ((preferred[0], other[0]), (preferred[-1], other[-1])):
+            if p.number is not None and o.number is not None:
+                offsets.append(o.number - p.number)
+    return list(dict.fromkeys(offsets))
 
-    Lengths and time signatures are compared only where both sides define them. Among all alignments with the
-    lowest cost, the one is chosen in which the fewest paired measures have different numbers. This decides where
-    the edits are placed when the lengths cannot, e.g., when all measures have the same length or when one side
-    does not define any lengths. Where neither lengths nor numbers decide (e.g., a missing measure among measures of
-    equal length whose numbers are offset on one side), the position of an edit within the run of equal measures
-    is arbitrary.
 
-    The computation takes time proportional to the product of the two lengths.
+def _align_items(
+    preferred: Sequence[_Item],
+    other: Sequence[_Item],
+    offset: int,
+    gap_cost: float,
+    change_cost: float,
+    join_split_cost: float,
+) -> Tuple[Tuple[float, int], List[AlignmentStep]]:
+    """Computes the alignment with the lowest (edit cost, number of paired measures whose numbers do not differ by
+    the given offset) and returns this pair together with the steps.
     """
     n, m = len(preferred), len(other)
     INF = float("inf")
-    # each cell holds (edit cost, number of paired measures with different numbers); the second is the tie-breaker
+    # each cell holds (edit cost, number of paired measures with disagreeing numbers); the second is the tie-breaker
     cost = [[(INF, 0)] * (m + 1) for _ in range(n + 1)]
     back = [[None] * (m + 1) for _ in range(n + 1)]
     cost[0][0] = (0.0, 0)
@@ -707,7 +790,7 @@ def align_measure_sequences(
                         j + 1,
                         (
                             c + (0.0 if same else change_cost),
-                            d + _numbers_differ(preferred[i], other[j]),
+                            d + _numbers_differ(preferred[i], other[j], offset),
                         ),
                         "match" if same else _change_operation(preferred[i], other[j]),
                     )
@@ -719,16 +802,22 @@ def align_measure_sequences(
             if (
                 i < n
                 and j + 1 < m
-                and None not in (preferred[i][1], other[j][1], other[j + 1][1])
+                and None
+                not in (preferred[i].length, other[j].length, other[j + 1].length)
             ):
-                if _lengths_equal(preferred[i][1], other[j][1] + other[j + 1][1]):
+                if _lengths_equal(
+                    preferred[i].length, other[j].length + other[j + 1].length
+                ):
                     candidates.append((i + 1, j + 2, (c + join_split_cost, d), "join"))
             if (
                 i + 1 < n
                 and j < m
-                and None not in (preferred[i][1], preferred[i + 1][1], other[j][1])
+                and None
+                not in (preferred[i].length, preferred[i + 1].length, other[j].length)
             ):
-                if _lengths_equal(preferred[i][1] + preferred[i + 1][1], other[j][1]):
+                if _lengths_equal(
+                    preferred[i].length + preferred[i + 1].length, other[j].length
+                ):
                     candidates.append((i + 2, j + 1, (c + join_split_cost, d), "split"))
             for ni, nj, nc, op in candidates:
                 if better(nc, cost[ni][nj]):
@@ -742,16 +831,66 @@ def align_measure_sequences(
         steps.append(
             AlignmentStep(
                 operation=op,
-                preferred=tuple(item[0] for item in p_items),
-                other=tuple(item[0] for item in o_items),
-                preferred_lengths=tuple(item[1] for item in p_items),
-                other_lengths=tuple(item[1] for item in o_items),
-                preferred_time_signatures=tuple(item[2] for item in p_items),
-                other_time_signatures=tuple(item[2] for item in o_items),
+                preferred=tuple(item.count for item in p_items),
+                other=tuple(item.count for item in o_items),
+                preferred_lengths=tuple(item.length for item in p_items),
+                other_lengths=tuple(item.length for item in o_items),
+                preferred_time_signatures=tuple(
+                    item.time_signature for item in p_items
+                ),
+                other_time_signatures=tuple(item.time_signature for item in o_items),
             )
         )
         i, j = pi, pj
-    return steps[::-1]
+    return cost[n][m], steps[::-1]
+
+
+def align_measure_sequences(
+    preferred: Sequence[tuple],
+    other: Sequence[tuple],
+    gap_cost: float = 1.0,
+    change_cost: float = 1.0,
+    join_split_cost: float = 0.5,
+) -> List[AlignmentStep]:
+    """Aligns two sequences of (count, actual_length, time_signature) or (count, actual_length, time_signature,
+    number) tuples with an edit distance that, besides matches, changes of length or time signature, insertions and
+    deletions, allows for joining two 'other' measures or splitting one 'other' measure when their lengths add up.
+    See OPERATIONS.
+
+    Lengths and time signatures are compared only where both sides define them.
+
+    Among all alignments with the lowest cost, the measure numbers decide. This is what places the edits when the
+    lengths cannot, e.g., when all measures have the same length or when one side does not define any lengths.
+    Since the two sides may number the same measures differently throughout (e.g., one from 0 because of an
+    anacrusis, the other from 1), numbers are compared relative to an offset: a pair of measures disagrees if
+    other.number - preferred.number is not the offset. The alignment is computed for each of up to three offsets,
+    namely 0, the offset between the first items of the two sequences, and the offset between their last items (in
+    this order, without duplicates, leaving out an offset if one of the two numbers is missing). The result is the
+    alignment with the lowest cost and, among those, the fewest disagreeing pairs. If two offsets are equally good,
+    the earlier one wins, so equal numbers are preferred over offset ones.
+
+    Where neither lengths nor numbers decide, the position of an edit within a run of equal measures is arbitrary.
+    For example, if all measures have the same length and the other side was renumbered consecutively after losing
+    a measure, the missing measure is reported at the end of the run, whichever one is actually missing.
+
+    The computation takes time proportional to the product of the two lengths, and it is carried out once per
+    offset, i.e., up to three times per call. :func:`compare_layered` calls this function once, and twice if one of
+    the MeasureMaps has repeats (for the folded and for the unfolded sequences).
+    """
+    p_items = [_Item(*item) for item in preferred]
+    o_items = [_Item(*item) for item in other]
+    best_cost, best_steps = None, []
+    for offset in _number_offsets(p_items, o_items):
+        cost, steps = _align_items(
+            p_items, o_items, offset, gap_cost, change_cost, join_split_cost
+        )
+        if (
+            best_cost is None
+            or cost[0] < best_cost[0] - _EPSILON
+            or (abs(cost[0] - best_cost[0]) <= _EPSILON and cost[1] < best_cost[1])
+        ):
+            best_cost, best_steps = cost, steps
+    return best_steps
 
 
 @dataclass
@@ -762,7 +901,7 @@ class ComparisonReport:
     other: MeasureMap
     layers: Dict[str, LayerResult]
     """The results of the layers 'count', 'fields', 'unfolded', and 'aligned', in this order."""
-    verdict: str
+    verdict: Verdict
     """One of VERDICTS."""
     alignment: List[AlignmentStep] = dataclass_field(default_factory=list)
     alignment_basis: Optional[str] = None
@@ -921,8 +1060,8 @@ def _offset_segments(p_entries, o_entries) -> List[Tuple[int, int, int]]:
     return [tuple(seg) for seg in segments if seg[2] != 0]
 
 
-def _item(measure) -> tuple:
-    return (
+def _item(measure) -> _Item:
+    return _Item(
         measure.count,
         _actual_length(measure),
         measure.time_signature,

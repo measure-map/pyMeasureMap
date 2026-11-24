@@ -1,7 +1,16 @@
+"""Tests for the layered comparison (pymeasuremap.compare) on small synthetic measure maps.
+
+See README_compare_layered.md in this folder for what each test makes sure and why the expected values are what they
+are.
+"""
+
+import csv
+
 import pytest
 
-from pymeasuremap.base import MeasureMap
+from pymeasuremap.base import Measure, MeasureMap
 from pymeasuremap.compare import (
+    AlignmentStep,
     align_measure_sequences,
     compare_layered,
     compare_pairs,
@@ -37,6 +46,62 @@ def repeated_mm():
 def written_out_mm():
     """The same music as repeated_mm() with the repeat written out: 1 2 1 2 3 4"""
     return make_mm([4.0] * 6)
+
+
+# The length of a measure
+
+
+def test_length_from_nominal_length_only():
+    measure = Measure(count=1, nominal_length=3.0)
+    assert measure.get_actual_length() == 3.0
+    assert measure.get_nominal_length() == 3.0
+
+
+def test_length_from_time_signature_only():
+    measure = Measure(count=1, time_signature="3/4")
+    assert measure.get_actual_length() == 3.0
+    assert measure.get_nominal_length() == 3.0
+
+
+def test_length_stated_wins():
+    measure = Measure(
+        count=1, time_signature="4/4", nominal_length=4.0, actual_length=1.0
+    )
+    assert measure.get_actual_length() == 1.0
+    assert measure.get_nominal_length() == 4.0
+
+
+def test_length_unknown_without_length_fields():
+    measure = Measure(count=1)
+    with pytest.raises(ValueError):
+        measure.get_actual_length()
+    with pytest.raises(ValueError):
+        measure.get_nominal_length()
+
+
+@pytest.mark.parametrize("time_signature", ["C", "4/0"])
+def test_length_unknown_for_time_signature_that_is_no_fraction(time_signature):
+    measure = Measure(count=1, time_signature=time_signature)
+    with pytest.raises(ValueError, match=repr(time_signature)):
+        measure.get_actual_length()
+    with pytest.raises(ValueError, match=repr(time_signature)):
+        measure.get_nominal_length()
+
+
+def test_compare_uses_nominal_length_as_length():
+    preferred = MeasureMap.from_array(count=[1, 2], nominal_length=[3.0, 3.0])
+    other = MeasureMap.from_array(count=[1, 2], actual_length=[3.0, 3.0])
+    report = compare_layered(preferred, other)
+    assert report.verdict == "identical"
+    assert report.layers["fields"].details["compared"] == ["actual_length"]
+    assert "nominal_length" in report.layers["fields"].details["undefined"]
+    count = report.layers["count"].details
+    assert count["duration_preferred"] == 6.0
+    assert count["duration_other"] == 6.0
+    assert count["lengths_compared"] is True
+
+
+# Unfolding
 
 
 def test_unfold_infers_repeats():
@@ -105,6 +170,95 @@ def test_different():
     assert report.verdict == "different"
     assert report.summary()["n_insert"] == 1
     assert "has no counterpart in other" in report.to_text()
+
+
+SUMMARY_OF_IDENTICAL_MAPS = dict(
+    preferred="preferred",
+    other="other",
+    verdict="identical",
+    n_preferred=3,
+    n_other=3,
+    duration_preferred=8.0,
+    duration_other=8.0,
+    lengths_compared=True,
+    compared_fields="qstamp, number, time_signature, actual_length",
+    undefined_fields="name, nominal_length, start_repeat, end_repeat, volta, next",
+    differing_fields="",
+    number_offset=None,
+    n_preferred_unfolded=None,
+    n_other_unfolded=None,
+    n_change_length=None,
+    n_change_time_signature=None,
+    n_join=None,
+    n_split=None,
+    n_insert=None,
+    n_delete=None,
+    message=(
+        "count: 3 vs. 3 measures; total durations 8q vs. 8q | fields: the 4 of 10 fields defined on both sides are "
+        "identical; not compared: name, nominal_length, start_repeat, end_repeat, volta, next"
+    ),
+)
+
+
+def test_summary_of_identical_maps():
+    report = compare_layered(make_mm([1.0, 4.0, 3.0]), make_mm([1.0, 4.0, 3.0]))
+    assert report.summary() == SUMMARY_OF_IDENTICAL_MAPS
+    assert list(report.summary()) == list(SUMMARY_OF_IDENTICAL_MAPS)
+
+
+def test_summary_of_same_measures():
+    report = compare_layered(
+        make_mm([1.0, 4.0, 3.0], numbers=[0, 1, 2]), make_mm([1.0, 4.0, 3.0])
+    )
+    assert report.summary() == dict(
+        SUMMARY_OF_IDENTICAL_MAPS,
+        verdict="same_measures",
+        differing_fields="number",
+        number_offset=1,
+        message=(
+            "count: 3 vs. 3 measures; total durations 8q vs. 8q | fields: measure numbers offset by +1 in 1–3; "
+            "not compared: name, nominal_length, start_repeat, end_repeat, volta, next"
+        ),
+    )
+
+
+def test_summary_of_alignable_maps():
+    report = compare_layered(make_mm([1.0, 3.0, 4.0]), make_mm([4.0, 4.0]))
+    assert report.summary() == dict(
+        SUMMARY_OF_IDENTICAL_MAPS,
+        verdict="alignable",
+        n_other=2,
+        compared_fields="",
+        undefined_fields="",
+        n_change_length=0,
+        n_change_time_signature=0,
+        n_join=0,
+        n_split=1,
+        n_insert=0,
+        n_delete=0,
+        message="count: 3 vs. 2 measures; total durations 8q vs. 8q | aligned: folded sequences: 1× split",
+    )
+
+
+def test_text_of_a_different_report():
+    report = compare_layered(
+        make_mm([4.0, 4.0, 2.0, 4.0]),
+        make_mm([4.0, 4.0, 4.0]),
+        preferred_name="a",
+        other_name="b",
+    )
+    assert report.to_text() == "\n".join(
+        [
+            "a (preferred) vs. b (other): DIFFERENT",
+            "  [differs] count: 4 vs. 3 measures; total durations 14q vs. 12q",
+            "  [skipped] fields: ",
+            "  [skipped] unfolded: ",
+            "  [differs] aligned: folded sequences: 1× insert",
+            "  Alignment of the folded sequences:",
+            "    - preferred 3 (2q) has no counterpart in other",
+        ]
+    )
+    assert str(report) == report.to_text()
 
 
 def test_align_measure_sequences_join():
@@ -193,6 +347,122 @@ def test_align_measure_sequences_prefers_equal_numbers():
     ]
 
 
+ANACRUSIS_AND_FIVE_MEASURES = [
+    (1, 1.0, "4/4", 0),
+    (2, 4.0, "4/4", 1),
+    (3, 4.0, "4/4", 2),
+    (4, 4.0, "4/4", 3),
+    (5, 4.0, "4/4", 4),
+    (6, 3.0, "4/4", 5),
+]
+INSERT_OF_PREFERRED_COUNT_5 = [
+    ("match", (1,), (1,)),
+    ("match", (2,), (2,)),
+    ("match", (3,), (3,)),
+    ("match", (4,), (4,)),
+    ("insert", (5,), ()),
+    ("match", (6,), (5,)),
+]
+
+
+def other_without_fifth_measure(numbers):
+    lengths = [1.0, 4.0, 4.0, 4.0, 3.0]
+    return [
+        (count, length, "4/4", number)
+        for count, (length, number) in enumerate(zip(lengths, numbers), 1)
+    ]
+
+
+def test_surplus_measure_is_located_by_number_after_an_anacrusis():
+    """The other side lacks number 4 and kept its numbering."""
+    steps = align_measure_sequences(
+        ANACRUSIS_AND_FIVE_MEASURES, other_without_fifth_measure([0, 1, 2, 3, 5])
+    )
+    assert [
+        (s.operation, s.preferred, s.other) for s in steps
+    ] == INSERT_OF_PREFERRED_COUNT_5
+
+
+def test_surplus_measure_is_located_when_numbers_are_offset_throughout():
+    """The other side numbers from 1 where the preferred side numbers from 0, and lacks its number 5."""
+    steps = align_measure_sequences(
+        ANACRUSIS_AND_FIVE_MEASURES, other_without_fifth_measure([1, 2, 3, 4, 6])
+    )
+    assert [
+        (s.operation, s.preferred, s.other) for s in steps
+    ] == INSERT_OF_PREFERRED_COUNT_5
+
+
+def test_position_among_equal_measures_is_arbitrary_when_other_is_renumbered():
+    """Neither lengths nor numbers say which measure the other side lost. The result is the one the rule gives; it
+    does not claim that the last measure is the missing one."""
+    preferred = [(count, 4.0, "4/4", count) for count in range(1, 6)]
+    other = [(count, 4.0, "4/4", count) for count in range(1, 5)]
+    steps = align_measure_sequences(preferred, other)
+    assert [(s.operation, s.preferred, s.other) for s in steps] == [
+        ("match", (1,), (1,)),
+        ("match", (2,), (2,)),
+        ("match", (3,), (3,)),
+        ("match", (4,), (4,)),
+        ("insert", (5,), ()),
+    ]
+
+
+def test_split_at_the_end_of_a_sequence():
+    steps = align_measure_sequences(
+        [(1, 4.0, None), (2, 3.0, None), (3, 1.0, None)],
+        [(1, 4.0, None), (2, 4.0, None)],
+    )
+    assert [(s.operation, s.preferred, s.other) for s in steps] == [
+        ("match", (1,), (1,)),
+        ("split", (2, 3), (2,)),
+    ]
+
+
+@pytest.mark.parametrize("change_cost", [2.0, 1.0])
+def test_change_is_kept_when_insert_and_delete_cost_the_same(change_cost):
+    """With change_cost=2.0 and gap_cost=1.0, one change costs as much as an insert plus a delete."""
+    steps = align_measure_sequences(
+        [(1, 4.0, None)], [(1, 3.0, None)], gap_cost=1.0, change_cost=change_cost
+    )
+    assert [(s.operation, s.preferred, s.other) for s in steps] == [
+        ("change_length", (1,), (1,))
+    ]
+
+
+def test_describe_join_and_split():
+    split = AlignmentStep(
+        operation="split",
+        preferred=(11, 12),
+        other=(11,),
+        preferred_lengths=(3.0, 1.0),
+        other_lengths=(4.0,),
+    )
+    assert split.describe() == (
+        "other 11 (4q) would need to be split to correspond to preferred 11+12 (3q+1q)"
+    )
+    join = AlignmentStep(
+        operation="join",
+        preferred=(12,),
+        other=(12, 10),
+        preferred_lengths=(4.0,),
+        other_lengths=(3.0, 1.0),
+    )
+    assert join.describe() == (
+        "other 12+10 (3q+1q) would need to be joined to correspond to preferred 12 (4q)"
+    )
+    without_lengths = AlignmentStep(operation="join", preferred=(1,), other=(1, 2))
+    assert without_lengths.describe() == (
+        "other 1+2 would need to be joined to correspond to preferred 1"
+    )
+    computed = align_measure_sequences(
+        [(1, 4.0, None)], [(1, 1.0, None), (2, 3.0, None)]
+    )
+    assert [step.describe() for step in computed] == [
+        "other 1+2 (1q+3q) would need to be joined to correspond to preferred 1 (4q)"
+    ]
+
+
 # Unfolding from repeat signs and endings
 
 
@@ -258,6 +528,66 @@ def test_unfold_next_with_ids_unknown_targets_and_loops(caplog):
     with caplog.at_level("WARNING"):
         assert unfold(make_mm([4.0] * 2, next=[[2], [1]])) == [1, 2] * 10
     assert "endless loop" in caplog.text
+
+
+def test_unfold_adjacent_repeated_sections():
+    """|: 1 2 :||: 3 4 :| 5"""
+    mm = make_mm(
+        [4.0] * 5,
+        start_repeat=[True, False, True, False, False],
+        end_repeat=[False, True, False, True, False],
+    )
+    assert unfold(mm) == [1, 2, 1, 2, 3, 4, 3, 4, 5]
+
+
+def test_unfold_nested_repeats_are_not_supported():
+    """|: 1 |: 2 :| 3 :| would be played 1 2 2 3 1 2 2 3. The inference from repeat signs follows one repeated
+    section at a time and yields something else, which this test pins."""
+    mm = make_mm(
+        [4.0] * 3,
+        start_repeat=[True, True, False],
+        end_repeat=[False, True, True],
+    )
+    assert unfold(mm) == [1, 2, 2, 3, 3]
+
+
+IGNORED_SIGNS_WARNING = (
+    "Some measures specify 'next', so the play-through follows 'next' only: the repeat signs and voltas of the "
+    "measures without 'next' are ignored (counts 1, 2)."
+)
+
+
+def test_unfold_next_on_some_measures_ignores_repeat_signs(caplog):
+    mm = MeasureMap.from_dicts(
+        [
+            dict(count=1, start_repeat=True),
+            dict(count=2, end_repeat=True),
+            dict(count=3, next=[-1]),
+        ]
+    )
+    with caplog.at_level("WARNING"):
+        assert unfold(mm) == [1, 2, 3]
+    assert [record.getMessage() for record in caplog.records] == [IGNORED_SIGNS_WARNING]
+
+
+def test_unfold_next_on_every_measure_does_not_warn(caplog):
+    mm = make_mm(
+        [4.0] * 4,
+        start_repeat=[True, False, False, False],
+        end_repeat=[False, True, False, False],
+        volta=[None, 1, 2, None],
+        next=[[2, 3], [1], [4], [-1]],
+    )
+    with caplog.at_level("WARNING"):
+        assert unfold(mm) == [1, 2, 1, 3, 4]
+    assert caplog.records == []
+
+
+def test_unfold_next_without_other_signs_does_not_warn(caplog):
+    mm = MeasureMap.from_dicts([dict(count=1), dict(count=2), dict(count=3, next=[-1])])
+    with caplog.at_level("WARNING"):
+        assert unfold(mm) == [1, 2, 3]
+    assert caplog.records == []
 
 
 # What a verdict rests on
@@ -449,3 +779,34 @@ def test_compare_pairs_names_and_errors(tmp_path):
     assert summary.preferred.tolist() == ["preferred_1", "missing.mm.json"]
     assert summary.verdict.tolist() == ["identical", "error"]
     assert reports[1] is None
+
+
+def test_compare_pairs_continues_when_a_report_cannot_be_written(tmp_path):
+    a, b, c = make_mm([4.0, 4.0]), make_mm([4.0, 2.0]), make_mm([4.0, 3.0])
+    blocked = tmp_path / "x_vs_y.tsv"
+    blocked.mkdir()
+    with pytest.raises(OSError) as error:
+        open(blocked, "w")
+    expected_error = repr(error.value)
+    summary, reports = compare_pairs(
+        [(a, b), (a, c)], names=[("x", "y"), ("p", "q")], output_directory=tmp_path
+    )
+    assert summary.verdict.tolist() == ["same_count_different_measures"] * 2
+    assert summary.output_error.isna().tolist() == [False, True]
+    assert summary.output_error[0] == expected_error
+    assert [report.verdict for report in reports] == [
+        "same_count_different_measures"
+    ] * 2
+    assert sorted(path.name for path in tmp_path.iterdir()) == [
+        "comparison_summary.tsv",
+        "p_vs_q.tsv",
+        "p_vs_q.txt",
+        "x_vs_y.tsv",
+    ]
+    assert blocked.is_dir()
+    with open(tmp_path / "comparison_summary.tsv", encoding="utf-8", newline="") as f:
+        rows = list(csv.DictReader(f, delimiter="\t"))
+    assert [(row["preferred"], row["other"], row["output_error"]) for row in rows] == [
+        ("x", "y", expected_error),
+        ("p", "q", ""),
+    ]
