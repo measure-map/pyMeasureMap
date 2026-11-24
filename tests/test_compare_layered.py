@@ -121,3 +121,71 @@ def test_compare_pairs_writes_outputs(tmp_path):
     assert (tmp_path / "comparison_summary.tsv").is_file()
     assert (tmp_path / "a_vs_b.txt").is_file()
     assert not (tmp_path / "c_vs_d.txt").exists()
+
+
+# Measure maps without lengths, e.g. from a source that only enumerates measures (detected measure boxes of a scan)
+
+
+def make_mm_without_lengths(numbers) -> MeasureMap:
+    return MeasureMap.from_array(count=range(1, len(numbers) + 1), number=numbers)
+
+
+def test_count_mismatch_without_lengths(tmp_path):
+    """Five measures against four, neither side defines lengths: the surplus measure is the one whose number has no
+    counterpart, and the report can be written."""
+    preferred = make_mm_without_lengths([1, 2, 3, 4, 5])
+    other = make_mm_without_lengths([1, 2, 3, 4])
+    report = compare_layered(preferred, other)
+    assert report.verdict == "different"
+    assert report.layers["count"].details["lengths_compared"] is False
+    assert "without measure lengths" in report.layers["count"].message
+    edits = [
+        (s.operation, s.preferred, s.other)
+        for s in report.alignment
+        if s.operation != "match"
+    ]
+    assert edits == [("insert", (5,), ())]
+    assert "preferred 5 has no counterpart in other" in report.to_text()
+    summary, _ = compare_pairs(
+        [(preferred, other)], names=[("a", "b")], output_directory=tmp_path
+    )
+    assert summary.verdict.tolist() == ["different"]
+    assert (tmp_path / "a_vs_b.txt").is_file()
+    assert (tmp_path / "a_vs_b.tsv").is_file()
+
+
+def test_missing_measure_is_located_by_number():
+    """All measures have the same length, so only the numbers can tell which one is missing."""
+    preferred = make_mm([4.0] * 5, numbers=[1, 2, 3, 4, 5])
+    other = make_mm([4.0] * 4, numbers=[1, 2, 4, 5])
+    report = compare_layered(preferred, other)
+    edits = [
+        (s.operation, s.preferred, s.other)
+        for s in report.alignment
+        if s.operation != "match"
+    ]
+    assert edits == [("insert", (3,), ())]
+
+
+def test_lengths_on_one_side_only():
+    """A measure with a length is not different from a measure without one."""
+    with_lengths = make_mm([1.0, 4.0, 4.0, 3.0], numbers=[0, 1, 2, 3])
+    same_count = compare_layered(with_lengths, make_mm_without_lengths([0, 1, 2, 3]))
+    assert same_count.verdict == "identical"
+    assert "actual_length" in same_count.layers["fields"].details["undefined"]
+    one_less = compare_layered(with_lengths, make_mm_without_lengths([0, 1, 2]))
+    assert one_less.verdict == "different"
+    assert one_less.summary()["n_change_length"] == 0
+    assert one_less.summary()["n_insert"] == 1
+    assert "preferred 4 (3q) has no counterpart in other" in one_less.to_text()
+
+
+def test_align_measure_sequences_prefers_equal_numbers():
+    preferred = [(1, None, None, 10), (2, None, None, 11), (3, None, None, 12)]
+    other = [(1, None, None, 11), (2, None, None, 12)]
+    steps = align_measure_sequences(preferred, other)
+    assert [(s.operation, s.preferred, s.other) for s in steps] == [
+        ("insert", (1,), ()),
+        ("match", (2,), (1,)),
+        ("match", (3,), (2,)),
+    ]

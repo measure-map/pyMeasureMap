@@ -528,6 +528,23 @@ def unfold(measure_map: MeasureMap, max_factor: int = 10) -> List[int]:
     return sequence
 
 
+def _same_measure(p: tuple, o: tuple) -> bool:
+    """Whether two (count, actual_length, time_signature, ...) items describe the same measure. Lengths and time
+    signatures are compared only where both sides define them: a measure without a length (e.g., from a source
+    that only enumerates measures) is not different from one that has a length.
+    """
+    if p[1] is not None and o[1] is not None and not _lengths_equal(p[1], o[1]):
+        return False
+    return p[2] is None or o[2] is None or p[2] == o[2]
+
+
+def _numbers_differ(p: tuple, o: tuple) -> bool:
+    """Whether both items carry a measure number (fourth element) and the two numbers are different."""
+    if len(p) < 4 or len(o) < 4:
+        return False
+    return p[3] is not None and o[3] is not None and p[3] != o[3]
+
+
 @dataclass
 class LayerResult:
     """Result of one layer of a layered comparison."""
@@ -553,13 +570,17 @@ class AlignmentStep:
     other_lengths: Tuple[float, ...] = ()
 
     def describe(self) -> str:
+        def length(lengths) -> str:
+            # measures without a defined length are described by their count only
+            return f" ({lengths[0]:g}q)" if lengths and lengths[0] is not None else ""
+
         p = "+".join(str(c) for c in self.preferred)
         o = "+".join(str(c) for c in self.other)
         if self.operation == "match":
             return f"preferred {p} = other {o}"
         if self.operation == "change_length":
             return (
-                f"preferred {p} ({self.preferred_lengths[0]:g}q) ≠ other {o} ({self.other_lengths[0]:g}q): "
+                f"preferred {p}{length(self.preferred_lengths)} ≠ other {o}{length(self.other_lengths)}: "
                 f"different length"
             )
         if self.operation == "join":
@@ -567,70 +588,81 @@ class AlignmentStep:
         if self.operation == "split":
             return f"other {o} would need to be split to correspond to preferred {p}"
         if self.operation == "insert":
-            return f"preferred {p} ({self.preferred_lengths[0]:g}q) has no counterpart in other"
+            return f"preferred {p}{length(self.preferred_lengths)} has no counterpart in other"
         if self.operation == "delete":
-            return f"other {o} ({self.other_lengths[0]:g}q) has no counterpart in preferred"
+            return (
+                f"other {o}{length(self.other_lengths)} has no counterpart in preferred"
+            )
         return f"{self.operation}: preferred {p}, other {o}"
 
 
 def align_measure_sequences(
-    preferred: Sequence[Tuple[int, Optional[float], Optional[str]]],
-    other: Sequence[Tuple[int, Optional[float], Optional[str]]],
+    preferred: Sequence[tuple],
+    other: Sequence[tuple],
     gap_cost: float = 1.0,
     change_cost: float = 1.0,
     join_split_cost: float = 0.5,
 ) -> List[AlignmentStep]:
-    """Aligns two sequences of (count, actual_length, time_signature) triples with an edit distance that, besides
-    matches, length changes, insertions and deletions, allows for joining two 'other' measures or splitting one
-    'other' measure when their lengths add up. Time signatures are compared only where both sides specify them.
+    """Aligns two sequences of (count, actual_length, time_signature) or (count, actual_length, time_signature,
+    number) tuples with an edit distance that, besides matches, length changes, insertions and deletions, allows for
+    joining two 'other' measures or splitting one 'other' measure when their lengths add up.
+
+    Lengths and time signatures are compared only where both sides define them. Among all alignments with the
+    lowest cost, the one is chosen in which the fewest paired measures have different numbers. This decides where
+    the edits are placed when the lengths cannot, e.g., when all measures have the same length or when one side
+    does not define any lengths.
     """
     n, m = len(preferred), len(other)
     INF = float("inf")
-    cost = [[INF] * (m + 1) for _ in range(n + 1)]
+    # each cell holds (edit cost, number of paired measures with different numbers); the second is the tie-breaker
+    cost = [[(INF, 0)] * (m + 1) for _ in range(n + 1)]
     back = [[None] * (m + 1) for _ in range(n + 1)]
-    cost[0][0] = 0.0
+    cost[0][0] = (0.0, 0)
 
-    def same(p, o) -> bool:
-        if not _lengths_equal(p[1], o[1]):
-            return False
-        return p[2] is None or o[2] is None or p[2] == o[2]
+    def better(new: Tuple[float, int], old: Tuple[float, int]) -> bool:
+        if new[0] < old[0] - _EPSILON:
+            return True
+        return abs(new[0] - old[0]) <= _EPSILON and new[1] < old[1]
 
     for i in range(n + 1):
         for j in range(m + 1):
-            c = cost[i][j]
+            c, d = cost[i][j]
             if c == INF:
                 continue
             candidates = []
             if i < n and j < m:
-                step_cost = 0.0 if same(preferred[i], other[j]) else change_cost
+                same = _same_measure(preferred[i], other[j])
                 candidates.append(
                     (
                         i + 1,
                         j + 1,
-                        c + step_cost,
-                        "match" if step_cost == 0 else "change_length",
+                        (
+                            c + (0.0 if same else change_cost),
+                            d + _numbers_differ(preferred[i], other[j]),
+                        ),
+                        "match" if same else "change_length",
                     )
                 )
             if i < n:
-                candidates.append((i + 1, j, c + gap_cost, "insert"))
+                candidates.append((i + 1, j, (c + gap_cost, d), "insert"))
             if j < m:
-                candidates.append((i, j + 1, c + gap_cost, "delete"))
+                candidates.append((i, j + 1, (c + gap_cost, d), "delete"))
             if (
                 i < n
                 and j + 1 < m
                 and None not in (preferred[i][1], other[j][1], other[j + 1][1])
             ):
                 if _lengths_equal(preferred[i][1], other[j][1] + other[j + 1][1]):
-                    candidates.append((i + 1, j + 2, c + join_split_cost, "join"))
+                    candidates.append((i + 1, j + 2, (c + join_split_cost, d), "join"))
             if (
                 i + 1 < n
                 and j < m
                 and None not in (preferred[i][1], preferred[i + 1][1], other[j][1])
             ):
                 if _lengths_equal(preferred[i][1] + preferred[i + 1][1], other[j][1]):
-                    candidates.append((i + 2, j + 1, c + join_split_cost, "split"))
+                    candidates.append((i + 2, j + 1, (c + join_split_cost, d), "split"))
             for ni, nj, nc, op in candidates:
-                if nc < cost[ni][nj] - _EPSILON:
+                if better(nc, cost[ni][nj]):
                     cost[ni][nj] = nc
                     back[ni][nj] = (i, j, op)
     steps = []
@@ -817,6 +849,14 @@ def compare_layered(
     p_entries, o_entries = list(p_mm), list(o_mm)
     layers: Dict[str, LayerResult] = {}
 
+    def item(measure) -> tuple:
+        return (
+            measure.count,
+            _actual_length(measure),
+            measure.time_signature,
+            measure.number,
+        )
+
     # layer 1: count & total duration
     n_p, n_o = len(p_entries), len(o_entries)
     p_lengths = [_actual_length(m) for m in p_entries]
@@ -827,11 +867,21 @@ def compare_layered(
         n_preferred=n_p, n_other=n_o, duration_preferred=dur_p, duration_other=dur_o
     )
     same_count = n_p == n_o
-    duration_msg = (
-        f"; total durations {dur_p:g}q vs. {dur_o:g}q"
-        if dur_p is not None and dur_o is not None
-        else ""
-    )
+    without_lengths = [
+        name
+        for name, lengths in (("preferred", p_lengths), ("other", o_lengths))
+        if all(length is None for length in lengths)
+    ]
+    count_details["lengths_compared"] = not without_lengths
+    if dur_p is not None and dur_o is not None:
+        duration_msg = f"; total durations {dur_p:g}q vs. {dur_o:g}q"
+    elif without_lengths:
+        duration_msg = (
+            f"; {' and '.join(without_lengths)} without measure lengths, which are therefore "
+            f"not compared"
+        )
+    else:
+        duration_msg = ""
     layers["count"] = LayerResult(
         "count",
         "same" if same_count else "differs",
@@ -925,18 +975,10 @@ def compare_layered(
         p_seq, o_seq = unfold(p_mm), unfold(o_mm)
         p_by_count = {m.count: m for m in p_entries}
         o_by_count = {m.count: m for m in o_entries}
-        p_unfolded = [
-            (c, _actual_length(p_by_count[c]), p_by_count[c].time_signature)
-            for c in p_seq
-        ]
-        o_unfolded = [
-            (c, _actual_length(o_by_count[c]), o_by_count[c].time_signature)
-            for c in o_seq
-        ]
+        p_unfolded = [item(p_by_count[c]) for c in p_seq]
+        o_unfolded = [item(o_by_count[c]) for c in o_seq]
         unfolded_same = len(p_unfolded) == len(o_unfolded) and all(
-            _lengths_equal(p[1], o[1])
-            and (p[2] is None or o[2] is None or p[2] == o[2])
-            for p, o in zip(p_unfolded, o_unfolded)
+            _same_measure(p, o) for p, o in zip(p_unfolded, o_unfolded)
         )
         written_out = []
         if unfolded_same and not same_count:
@@ -970,18 +1012,17 @@ def compare_layered(
         # (preferring the unfolded one in case of a tie)
         candidates = []
         if p_seq is not None:
-            p_items = [
-                (c, _actual_length(p_by_count[c]), p_by_count[c].time_signature)
-                for c in p_seq
-            ]
-            o_items = [
-                (c, _actual_length(o_by_count[c]), o_by_count[c].time_signature)
-                for c in o_seq
-            ]
-            candidates.append(("unfolded", align_measure_sequences(p_items, o_items)))
-        p_items = [(m.count, _actual_length(m), m.time_signature) for m in p_entries]
-        o_items = [(m.count, _actual_length(m), m.time_signature) for m in o_entries]
-        candidates.append(("folded", align_measure_sequences(p_items, o_items)))
+            candidates.append(
+                ("unfolded", align_measure_sequences(p_unfolded, o_unfolded))
+            )
+        candidates.append(
+            (
+                "folded",
+                align_measure_sequences(
+                    [item(m) for m in p_entries], [item(m) for m in o_entries]
+                ),
+            )
+        )
         basis, alignment = min(
             candidates, key=lambda c: sum(step.operation != "match" for step in c[1])
         )
