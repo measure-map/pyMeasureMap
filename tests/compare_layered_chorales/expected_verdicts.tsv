@@ -1,0 +1,9 @@
+preferred	other	verdict	case
+B072	cap_R087	identical	same edition encoding: every field defined on both sides is equal
+B015	cap_R359	same_measures	same measures, numbering differs: anacrusis counted as 1 and a split measure numbered twice
+B072	xml_R087	same_count_different_measures	same number of measures, two of them have a different length
+B072	krn_R087	same_when_unfolded	krn writes out the repeat of the second section, the 389 uses repeat signs
+B006	krn_R253	alignable	the 389 split a measure in two (3q + 1q), krn has it in one
+B205	krn_R327	alignable	repeats differ; once unfolded, two krn measures need to be joined
+B015	krn_R359	different	krn lacks a 2q measure and has a 4q instead of a 3q final measure
+B329	krn_R179	different	the 389 notate the chorale in 2/2 with 36 measures, krn in 4/4 with 18
