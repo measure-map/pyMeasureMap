@@ -210,7 +210,7 @@ def test_compressed_map_is_identical_B015():
     measure_map = load("B015")
     compressed = measure_map.compress()
     assert len(measure_map.entries) == 22
-    assert len(compressed.entries) < 22
+    assert [m.count for m in compressed.entries] == [1, 8, 9, 13, 22]
     report = compare_layered(measure_map, compressed)
     assert report.verdict == "identical"
     assert report.layers["count"].details["n_other"] == 22
