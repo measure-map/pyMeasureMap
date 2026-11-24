@@ -14,3 +14,6 @@ Unreleased
   passed via ``-f`` or on the pairs listed in a TSV/CSV file. With ``-o``, the summary and the reports are written
   to files.
 - A missing output folder passed via ``-o`` is created without asking when the command is not run from a terminal.
+- ``Measure.get_actual_length()``: a measure that specifies only ``nominal_length`` now has that length, which
+  ``compress()`` and ``decompress()`` use. A measure without any length information raises ``ValueError`` (was
+  ``AssertionError``), and so does an invalid time signature such as ``4/0`` (was ``ZeroDivisionError``).
