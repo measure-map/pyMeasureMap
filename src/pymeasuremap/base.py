@@ -61,7 +61,8 @@ class PMeasure(Protocol):
 
         Raises:
             ValueError:
-                If neither the actual_length nor the nominal_length is specified.
+                If neither the actual_length nor the nominal_length is specified and the nominal length cannot be
+                derived from the time_signature either.
 
         """
         ...
@@ -162,12 +163,13 @@ class Measure(PMeasure):
 
         Raises:
             ValueError:
-                If neither the actual_length nor the nominal_length is specified.
+                If neither the actual_length nor the nominal_length is specified and the nominal length cannot be
+                derived from the time_signature either.
 
         """
         if self.actual_length is not None:
             return float(self.actual_length)
-        return time_signature2nominal_length(self.time_signature)
+        return self.get_nominal_length()
 
     def get_default_successor(self, ignore_ids: bool = False) -> Measure:
         """Generates the successor in the MeasureMap based on default values. This method is at the heart of the
@@ -192,9 +194,10 @@ class Measure(PMeasure):
                 "Cannot compute the nominal_length because neither 'nominal_length' nor "
                 "'time_signature' is specified."
             )
-        return time_signature2nominal_length(
-            self.time_signature
-        )  # ValueError if not a fraction
+        try:
+            return time_signature2nominal_length(self.time_signature)
+        except ZeroDivisionError as e:
+            raise ValueError(f"Invalid time signature: {self.time_signature!r}") from e
 
 
 def make_default_successor(measure: Measure, ignore_ids: bool = False) -> Measure:
