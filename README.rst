@@ -107,6 +107,85 @@ Compress a MeasureMap object
    compressed = mm.compress()
    compressed.to_json_file("path/to/compressed.mm.json")
 
+Comparing measure maps
+----------------------
+
+Two measure maps of the same music often differ: one edition counts the anacrusis as measure 1, another splits a
+measure at a repeat sign, a third writes out what the others repeat. The layered comparison tells these cases
+apart. It takes a *preferred* measure map as reference and an *other* one, and answers four questions in turn:
+
+#. **count**: Do both have the same number of measures?
+#. **fields**: If so, which of the fields that both define are identical, measure by measure?
+#. **unfolded**: If the counts or the repeats differ, are the two the same once repeats are written out?
+#. **aligned**: If not, which operations turn the other sequence of measures into the preferred one?
+
+The answer is summed up in a verdict:
+
+================================= ===================================================================================
+verdict                           meaning
+================================= ===================================================================================
+``identical``                     same number of measures, all fields defined on both sides are identical
+``same_count``                    same number of measures, but no field is defined on both sides
+``same_measures``                 same number of measures with the same lengths and time signatures; other fields
+                                  (e.g., numbering or repeat signs) differ
+``same_count_different_measures`` same number of measures, but some lengths or time signatures differ
+``same_when_unfolded``            the numbers of measures differ, but the play-throughs are the same
+``alignable``                     the measures are segmented differently: joins and splits are enough to align them
+``different``                     the alignment needs insertions, deletions, or changes of length or time signature
+================================= ===================================================================================
+
+The operations of an alignment are named from the point of view of the other measure map: ``match``,
+``change_length``, ``change_time_signature``, ``join`` (two other measures add up to one preferred measure),
+``split`` (one other measure corresponds to two preferred ones), ``insert`` (a preferred measure has no
+counterpart), and ``delete`` (an other measure has no counterpart).
+
+Fields that one side does not define are not compared and do not count as differences. A measure map that merely
+enumerates measures (say, the measures detected on a scan) can therefore be compared with one that has lengths
+and time signatures; the summary says which fields were compared.
+
+In Python:
+
+.. code-block:: python
+
+   from pymeasuremap.compare import compare_layered, compare_pairs
+
+   report = compare_layered("path/to/preferred.mm.json", "path/to/other.mm.json")
+   report.verdict          # e.g. 'alignable'
+   print(report.to_text()) # the verdict, one line per layer, and the steps of the alignment
+   report.summary()        # one flat dictionary, e.g. for a row of a table
+   report.measure_table()  # measure-by-measure juxtaposition as a pandas DataFrame
+
+   # many pairs at once: a summary table plus the reports
+   summary, reports = compare_pairs(
+       [("a/preferred.mm.json", "a/other.mm.json"), ("b/preferred.mm.json", "b/other.mm.json")],
+       output_directory="path/to/reports",
+   )
+
+``pymeasuremap.compare.unfold()`` returns the play-through of a measure map as a sequence of counts. It follows the
+``next`` fields if there are any and otherwise interprets the repeat signs and voltas.
+
+On the command line (``MM compare -h`` prints the help)::
+
+    MM compare -f preferred.mm.json --other other.mm.json  # prints the report
+    MM compare -d path/to/corpus --pairs pairs.tsv -o path/to/reports
+
+``pairs.tsv`` contains one pair per row, the path of the preferred measure map in the first column and that of the
+other one in the second, separated by tabs or commas, with or without a header row. Relative paths are resolved
+against ``-d``. With ``-o``, the command writes ``comparison_summary.tsv`` (one row per pair with the verdict, the
+numbers of measures, the compared and the differing fields, and how often each operation occurs) and, for each
+pair that is not identical, ``<preferred>_vs_<other>.tsv`` (the measure table) and ``.txt`` (the report). A
+folder passed via ``-o`` that does not exist is created; when the command is run from a terminal, it asks first.
+
+Without ``--other`` and ``--pairs``, ``MM compare`` runs the older diagnosis: for each file called
+``preferred_measure_map.json`` under ``-d`` (or each file passed via ``-f``) it looks for
+``other_measure_map.json`` in the same folder and writes the suggested modifications to
+``other_modifications.txt`` next to it.
+
+Limitations: repeats within repeats and jumps such as da capo are followed only where ``next`` states them; the
+same music notated in different note values (2/2 against 4/4 with halved measures) is reported as ``different``;
+where neither lengths nor measure numbers tell which of several equal measures is the surplus one, its reported
+position is arbitrary.
+
 
 
 .. _pyscaffold-notes:

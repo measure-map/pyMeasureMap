@@ -35,6 +35,40 @@ def test_volta():
         MeasureMap.from_array(count=[1, 2], volta=[0, 1])
 
 
+def test_volta_with_several_numbers(tmp_path):
+    """An ending that is played in several passes ('1.-2.', or first and third time) lists their numbers. The list
+    has to survive what every other value survives: writing and reading the JSON file, and compression.
+    """
+    MM = MeasureMap.from_array(
+        count=[1, 2, 3, 4, 5], volta=[None, [1, 2], [1, 2], 3, None]
+    )
+    assert [measure.volta for measure in MM] == [None, [1, 2], [1, 2], 3, None]
+    assert MM.to_dicts()[1] == {"count": 2, "volta": [1, 2]}
+    assert MM.to_dicts()[3] == {"count": 4, "volta": 3}
+    filepath = tmp_path / "voltas.mm.json"
+    MM.to_json_file(filepath)
+    assert MeasureMap.from_json_file(filepath) == MM
+    # counts 2 and 3 share an ending, so the second one is the default successor of the first and can be omitted
+    compressed = MM.compress()
+    assert [measure.count for measure in compressed] == [1, 2, 4, 5]
+    assert compressed.decompress() == MM
+
+
+def test_volta_numbers():
+    """get_volta_numbers() gives the passes of a measure in one form, whichever way 'volta' was written. A list of
+    one number is kept as it was written."""
+    MM = MeasureMap.from_array(count=[1, 2, 3, 4], volta=[None, 2, [1, 3], [2]])
+    assert [measure.get_volta_numbers() for measure in MM] == [(), (2,), (1, 3), (2,)]
+    assert MM.to_dicts()[3] == {"count": 4, "volta": [2]}
+
+
+@pytest.mark.parametrize("volta", [[], [1, 0], [2, 2], [-1], 0])
+def test_invalid_volta(volta):
+    """Passes are counted from 1, an ending belongs to at least one pass and to none twice."""
+    with pytest.raises(AssertionError, match="volta must be a positive integer"):
+        MeasureMap.from_array(count=[1, 2], volta=[None, volta])
+
+
 def test_json_output(single_mm_path, tmp_path):
     mm = MeasureMap.from_json_file(single_mm_path)
     tmp_filepath = tmp_path / "temp.mm.json"

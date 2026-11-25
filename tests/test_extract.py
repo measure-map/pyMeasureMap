@@ -43,4 +43,5 @@ def test_m21_extraction_of_multi_number_volta():
     part.insert(0, spanner.RepeatBracket(second, number="1, 2"))
     part.insert(0, spanner.RepeatBracket(third, number=3))
     mm = m21_stream_to_measure_map(part)
-    assert [measure.volta for measure in mm] == [None, 1, 3]
+    # the bracket "1, 2" stands for the first and the second pass, so both numbers are kept
+    assert [measure.volta for measure in mm] == [None, [1, 2], 3]
